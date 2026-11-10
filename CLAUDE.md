@@ -25,6 +25,9 @@ base64 数据块；为了便于阅读和修改代码，仓库里保存的是拆�
 - `tools/split.py` — 原始 HTML → 上述文件
 - `tools/build.py` — 上述文件 → 单文件 HTML
 - `tools/original.sha256` — 原始 HTML 的 SHA-256
+- `tools/epk_to_vanilla.py` — 把游戏导出的世界 EPK（`epk/world262`）转成原版世界文件夹，
+  可直接作为 26.2 Java 服务端的 `world`。游戏里的 “Convert to Vanilla” 按钮在源码里是
+  写死禁用的，所以用这个脚本代替。只用合成数据测过，还没用真实存档验证
 - `dist/` — 构建输出，已加入 `.gitignore`
 
 ## 重新生成 HTML
