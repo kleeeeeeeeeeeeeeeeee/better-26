@@ -205,7 +205,9 @@
 	} catch (e) {}
 
 	banner("M1 profile: ON - render scale " + (profile.renderScale === null ? "native" : profile.renderScale)
-		+ " (screen is " + profile.nativePixelRatio + "x), mesh workers max 2"
+		+ " (screen is " + profile.nativePixelRatio + "x), "
+		+ (/[?&]meshworkers=[1-4](?:&|$)/.test(window.location.search)
+			? "mesh workers set by ?meshworkers" : "mesh workers max 2")
 		+ (forced === "1" ? " (forced by ?m1=1)" : ""));
 	try {
 		console.log("[shell] MacBook Air M1 profile active: render scale " + profile.renderScale
