@@ -7,10 +7,11 @@ base64 数据块；为了便于阅读和修改代码，仓库里保存的是拆�
 ## 目录结构
 
 - `src/index.template.html` — HTML 骨架，被拆出去的内容在原位置换成占位符
-- `src/js/` — 7 段内联脚本，按在页面中出现的顺序编号
+- `src/js/` — 8 段内联脚本，按在页面中出现的顺序编号
   - `01-brotli-decoder.js` — Brotli 解码器（已压缩，不可读）
   - `02-inline-payload-loader.js` — 内联数据块的加载与 fetch 拦截
-  - `02b-m1-air-profile.js` — MacBook Air M1 性能配置（后加的，原始文件里没有）
+  - `02b-m1-air-profile.js` — 渲染分辨率控制与 MacBook Air M1 性能配置（后加的）
+  - `02c-perf-panel.js` — 屏幕左上角的性能面板（后加的）
   - `03-debug-flags.js` — URL 调试参数与诊断开关
   - `04-teavm-wasmgc-runtime.js` — TeaVM Wasm-GC 运行时（已压缩）
   - `05-worker-bootstrap.js` — 页面与 worker 共用的 Wasm-GC 启动逻辑
@@ -24,6 +25,12 @@ base64 数据块；为了便于阅读和修改代码，仓库里保存的是拆�
 - `tools/split.py` — 原始 HTML → 上述文件
 - `tools/build.py` — 上述文件 → 单文件 HTML
 - `tools/original.sha256` — 原始 HTML 的 SHA-256
+- `tools/epk_to_vanilla.py` — 把游戏导出的世界 EPK（`epk/world262`）转成原版世界文件夹，
+  可直接作为 26.2 Java 服务端的 `world`。游戏里的 “Convert to Vanilla” 按钮在源码里是
+  写死禁用的，所以用这个脚本代替。用用户的真实存档跑过：6623 个地形区块的坐标和
+  `DataVersion`（4903，即 26.2）全部核对一致；还没在真正的 26.2 服务端上加载过
+- `tools/connection-test.html` — 独立的连接测试页，在目标网络下用浏览器打开，检查能否连到
+  内置 relay、trycloudflare.com 以及用户自己的服务器地址
 - `dist/` — 构建输出，已加入 `.gitignore`
 
 ## 重新生成 HTML
@@ -55,17 +62,51 @@ base64 数据块；为了便于阅读和修改代码，仓库里保存的是拆�
 `src/js/02b-m1-air-profile.js` 在游戏启动前检测 M1 Air（Mac + GPU 名称为 Apple M1；
 Safari 隐藏 GPU 名称时改用 8 核 + 13.3 寸屏幕分辨率判断），命中后做两件事：
 
-- 把 `window.devicePixelRatio` 封顶为 1：画布像素数降到原来的四分之一
-  （全屏 2880×1800 → 1440×900），整数倍放大保持锐利
+- 把 `window.devicePixelRatio` 封顶为 1.5：画布像素数降到原来的约 56%
+  （全屏 2880×1800 → 2160×1350）
 - 把 `navigator.hardwareConcurrency` 报告为 4：mesh worker 上限从 4 降到 2
   （上限 = 核心数 − 2），启动数量仍由游戏自适应
 
 URL 参数：`?m1=1` 强制开启，`?m1=0` 关闭，`?renderscale=N` 调整分辨率上限
-（0.5–3，默认 1）。状态见 `window.__eaglerM1Profile`；在 Mac 上启动时屏幕顶部还会
+（0.5–3，M1 Air 默认 1.5）。状态见 `window.__eaglerM1Profile`；在 Mac 上启动时屏幕顶部还会
 显示约 10 秒的状态横幅（用户打不开 F12，靠它确认是否生效）。
 
-这两项是按源码逻辑推出的，只在无头 Chromium 里验证过生效和能正常启动，没有在真实
-M1 上测过帧率。由于加了这个文件，`build.py` 现在会报告与原文件不同，属于预期。
+用户在真实 M1 Air 上的实测（屏幕缩放为 1661×933，Native 是 3322×1866）：1x 和 1.5x
+帧率几乎没区别，Native 波动很大。所以默认值定为 1.5；说明 1.5x 以下瓶颈不在 GPU
+像素填充。mesh worker 上限也让用户对比过（加入同一个 LAN world，
+上限 4 对上限 2，清晰度都是 1.5x）：两者都在 2–3 秒内回到 60 帧，没有明显差别；上限 4
+开头掉到过 30 以下，上限 2 最低 30。所以保持上限 2。由于加了这个文件，`build.py` 现在会报告与原文件不同，属于预期。
+
+## 性能面板
+
+`src/js/02c-perf-panel.js`。左上角的帧率小标签可以拖动，点击展开面板（界面是英文）：
+
+- 帧时间曲线：最近 30 秒，每半秒一根柱子，高度是这半秒里最慢的一帧，横线是 60 帧
+- 最差帧时间、游戏帧时间（进入世界后）、画布分辨率、mesh worker、M1 配置状态
+- 渲染分辨率滑块（0.5x 到屏幕原生，步进 0.25）和 Auto 按钮
+- 网络：游戏自己的 WebSocket 和 WebRTC 数据通道的上下行速度、累计流量、当前连接的
+  主机和建立连接用时
+- 电量（仅 Chrome）、游玩时长、全屏按钮
+- My server：保存用户自己服务器的完整连接地址，一键测试是否可达
+
+实现要点：
+
+- 滑块的值是玩家选的清晰度上限，存在 localStorage 的 `eaglercraft26.renderScale`。
+  Auto 在 1x 和这个上限之间自动调整，调用 `__eaglerRenderScale.set(值, true)`，
+  第二个参数表示临时调整、不覆盖玩家的选择。
+- Auto 的规则（`createAuto`）：帧率连续约 1 秒低于刷新率的 80% 就降 0.25；连续约 8 秒
+  不低于 95% 才升 0.25；每次调整后冷却 2 秒；刚升上去又被迫降下来时，下次升之前的
+  等待时间翻倍（最长 2 分钟），避免来回跳。只在 `__eaglerGameReady` 之后运行。
+- 网络计数靠 `class extends` 包了一层 `WebSocket` 和 `RTCPeerConnection`，并改了
+  `RTCDataChannel.prototype.send`。worker 里的连接统计不到。连接是否存活看
+  `readyState`，不等 close 事件。
+- 帧率是用 `requestAnimationFrame` 的回调间隔估的，不是游戏内部的计数。
+- 页面的 `<meta charset>` 在 75MB 之后才出现，新增的 JS 只用 ASCII 字符，界面文字用英文。
+- 游戏全屏的是 `#game_frame`，面板在全屏时会被移进去，否则看不到。
+- 按钮用 `<div>` 而不是 `<button>`，滑块 `tabIndex=-1` 且用完立刻 `blur()`，避免获得键盘
+  焦点后被游戏里的按键触发。地址输入用 `prompt()`，同样是为了不和游戏抢键盘。
+- `?panel=0` 关闭面板和网络计数。内部状态在 `window.__eaglerPerfPanel`。
+- 自动调节在真实 M1 上还没实测过，只测过控制逻辑和在无头浏览器里的降档。
 
 ## 源码参考
 

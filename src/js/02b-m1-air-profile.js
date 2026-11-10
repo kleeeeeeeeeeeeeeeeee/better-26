@@ -1,24 +1,30 @@
 
 /*
- * MacBook Air M1 performance profile.
+ * Render scale control and MacBook Air M1 performance profile.
  *
  * The game reads two browser properties to size itself, both once per frame or
  * at startup, so they can be tuned here without rebuilding the Wasm image:
  *
  *  - window.devicePixelRatio: the canvas backing store is CSS size x DPR. On the
  *    Air's 2x Retina panel a fullscreen canvas is ~5.2M pixels, which the fanless
- *    8-core GPU cannot sustain. Capping the ratio to 1 renders a quarter of the
- *    pixels and upscales by an exact 2x, which stays sharp with pixelated scaling.
+ *    8-core GPU cannot sustain. Measured on a real M1 Air, 1x and 1.5x run at
+ *    about the same frame rate while native 2x fluctuates heavily, so the default
+ *    cap is 1.5: roughly half the pixels of native, noticeably sharper than 1x.
  *
  *  - navigator.hardwareConcurrency: the mesh worker pool ceiling is cores - 2,
  *    up to 4. The M1 reports 8 cores but only 4 are performance cores, already
  *    shared by the main thread and the integrated server worker, and every mesh
  *    worker is a separate Wasm-GC heap. Reporting 4 keeps the pool at 2 workers.
  *
+ * The render scale cap works on every machine and can be changed while the game
+ * runs through window.__eaglerRenderScale (used by the performance panel); the
+ * choice is remembered in localStorage. Only the M1 Air gets a default cap of
+ * 1.5 and the reduced core count.
+ *
  * URL parameters:
- *   ?m1=1            force the profile on (any machine)
+ *   ?m1=1            force the M1 profile on (any machine)
  *   ?m1=0            force it off
- *   ?renderscale=N   device pixel ratio cap, 0.5 to 3 (default 1)
+ *   ?renderscale=N   device pixel ratio cap for this visit, 0.5 to 3
  * ?meshworkers=N still sets an exact mesh worker count as before.
  *
  * A status banner is shown for a few seconds at startup on Macs, so the result
@@ -26,6 +32,7 @@
  */
 (function () {
 	"use strict";
+	var SCALE_KEY = "eaglercraft26.renderScale";
 	var params = new URLSearchParams(window.location.search);
 	var forced = params.get("m1");
 
@@ -90,23 +97,30 @@
 		nativePixelRatio: window.devicePixelRatio || 1,
 		reportedCores: navigator.hardwareConcurrency | 0
 	};
-	if (!detected.match) {
-		if (detected.mac) {
-			banner(forced === "0" ? "M1 profile: OFF (?m1=0)"
-				: "M1 profile: OFF - this Mac was not detected as an M1 Air (GPU: "
-					+ (detected.renderer || "unknown") + "). Add ?m1=1 to the address to force it on.");
-		}
-		return;
-	}
 
 	// ---- Render resolution cap ----
-	var cap = parseFloat(params.get("renderscale"));
-	if (!(cap >= 0.5 && cap <= 3)) cap = 1;
-	profile.renderScale = cap;
-	var dprOwner = window;
+	function validScale(value) {
+		value = parseFloat(value);
+		return value >= 0.5 && value <= 3 ? value : null;
+	}
+	// null means "no cap": render at the display's native ratio.
+	var cap = validScale(params.get("renderscale"));
+	var chosen = cap !== null;
+	if (!chosen) {
+		var stored = null;
+		try { stored = localStorage.getItem(SCALE_KEY); } catch (e) {}
+		if (stored === "native") {
+			chosen = true;
+		} else if (validScale(stored) !== null) {
+			cap = validScale(stored);
+			chosen = true;
+		}
+	}
+	// Only the M1 Air gets a default cap; a stored "native" choice is respected.
+	if (!chosen && detected.match) cap = 1.5;
+
 	var dprDesc = Object.getOwnPropertyDescriptor(window, "devicePixelRatio");
 	if (!dprDesc && window.Window) {
-		dprOwner = Window.prototype;
 		dprDesc = Object.getOwnPropertyDescriptor(Window.prototype, "devicePixelRatio");
 	}
 	function nativeRatio() {
@@ -117,31 +131,68 @@
 			return profile.nativePixelRatio;
 		}
 	}
+	function effectiveRatio() {
+		var native = nativeRatio();
+		return cap === null ? native : Math.min(native, cap);
+	}
+	var overrideInstalled = false;
 	try {
 		Object.defineProperty(window, "devicePixelRatio", {
 			configurable: true,
 			enumerable: true,
-			get: function () { return Math.min(nativeRatio(), cap); },
+			get: effectiveRatio,
 			set: function () {}
 		});
-	} catch (e) {
-		profile.renderScale = null;
-	}
+		overrideInstalled = true;
+	} catch (e) {}
+
 	// The game marks its canvas image-rendering: pixelated. That is only clean for
 	// whole-number upscales; smooth the canvas when the ratio is fractional.
 	function updateScaling() {
-		var ratio = nativeRatio() / Math.min(nativeRatio(), cap);
+		var ratio = nativeRatio() / effectiveRatio();
 		var smooth = Math.abs(ratio - Math.round(ratio)) > 0.01;
 		document.documentElement.classList.toggle("eag-smooth-canvas", smooth);
+		profile.renderScale = overrideInstalled ? cap : null;
 	}
 	try {
 		var style = document.createElement("style");
 		style.textContent = "html.eag-smooth-canvas ._eaglercraftX_canvas_element"
 			+ "{image-rendering:auto !important}";
 		document.head.appendChild(style);
-		updateScaling();
 		window.addEventListener("resize", updateScaling);
 	} catch (e) {}
+	updateScaling();
+
+	window.__eaglerRenderScale = {
+		available: overrideInstalled,
+		// Current cap, or null when rendering at the native ratio.
+		get: function () { return cap; },
+		native: nativeRatio,
+		effective: effectiveRatio,
+		// The game re-reads devicePixelRatio every frame, so this applies at once.
+		// Pass temporary = true for automatic adjustments that should not replace
+		// the scale the player chose.
+		set: function (value, temporary) {
+			cap = value === null ? null : validScale(value);
+			if (!temporary) {
+				try {
+					if (cap === null) localStorage.setItem(SCALE_KEY, "native");
+					else localStorage.setItem(SCALE_KEY, String(cap));
+				} catch (e) {}
+			}
+			updateScaling();
+			return cap;
+		}
+	};
+
+	if (!detected.match) {
+		if (detected.mac) {
+			banner(forced === "0" ? "M1 profile: OFF (?m1=0)"
+				: "M1 profile: OFF - this Mac was not detected as an M1 Air (GPU: "
+					+ (detected.renderer || "unknown") + "). Add ?m1=1 to the address to force it on.");
+		}
+		return;
+	}
 
 	// ---- Mesh worker ceiling ----
 	try {
@@ -153,7 +204,7 @@
 		profile.reportedCores = 4;
 	} catch (e) {}
 
-	banner("M1 profile: ON - render scale " + (profile.renderScale === null ? "unchanged" : profile.renderScale)
+	banner("M1 profile: ON - render scale " + (profile.renderScale === null ? "native" : profile.renderScale)
 		+ " (screen is " + profile.nativePixelRatio + "x), mesh workers max 2"
 		+ (forced === "1" ? " (forced by ?m1=1)" : ""));
 	try {
