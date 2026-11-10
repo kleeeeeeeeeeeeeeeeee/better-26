@@ -7,15 +7,17 @@ The game's own "Convert to Vanilla" button is disabled, so this does the same
 job offline. An epk/world262 archive holds the world directory with one file
 per chunk:
 
-    <namespace>_<path>/<region|entities|poi>/<XXXXXXZZZZZZ>
+    <namespace>_<path>/<chunk|entities|poi>/<XXXXXXZZZZZZ>
 
 where the name is two 6-digit hex numbers, chunk x + 1900000 and chunk z +
 1900000, and the content is the chunk's NBT (gzip, or raw in old exports).
-Vanilla 26.2 stores the same NBT in region files:
+Vanilla 26.2 stores the same NBT in region files ("chunk" becomes "region"):
 
     dimensions/<namespace>/<path>/<region|entities|poi>/r.<rx>.<rz>.mca
 
-Everything else (level.dat, data/, players/ ...) is copied unchanged.
+Per-dimension saved data moves from <namespace>_<path>/data/ to
+dimensions/<namespace>/<path>/data/. Everything else (level.dat, data/,
+players/ ...) is copied unchanged.
 The output folder can be used as the `world` folder of a 26.2 server.
 """
 import gzip
@@ -28,7 +30,10 @@ import zipfile
 import zlib
 from pathlib import Path
 
-CHUNK_RE = re.compile(r"^([^/]+)/(region|entities|poi)/([0-9a-fA-F]{12})$")
+CHUNK_RE = re.compile(r"^([^/]+)/(chunk|region|entities|poi)/([0-9a-fA-F]{12})$")
+DIM_DATA_RE = re.compile(r"^([a-z0-9.-]+_[a-z0-9_.-]+)/data/(.+)$")
+# Marker files the browser client adds to its own storage.
+DROP = {".eagler_imported"}
 COORD_BIAS = 1900000
 SECTOR = 4096
 
@@ -148,14 +153,21 @@ def convert(epk_bytes: bytes):
         if rel is None:
             stats["skipped"].append(name)
             continue
+        if rel in DROP:
+            continue
         match = CHUNK_RE.match(rel)
         if not match:
+            data = DIM_DATA_RE.match(rel)
+            if data:
+                rel = f"{dimension_folder(data.group(1))}/data/{data.group(2)}"
             files[rel] = content
             stats["other"] += 1
             continue
         dim, storage, code = match.groups()
         x = int(code[:6], 16) - COORD_BIAS
         z = int(code[6:], 16) - COORD_BIAS
+        if storage == "chunk":
+            storage = "region"
         key = (f"{dimension_folder(dim)}/{storage}", x >> 5, z >> 5)
         regions.setdefault(key, {})[(x & 31, z & 31)] = content
         stats["chunks"] += 1
