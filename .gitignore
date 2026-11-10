@@ -1,0 +1,3 @@
+# Build output of tools/build.py
+dist/
+__pycache__/

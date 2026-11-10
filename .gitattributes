@@ -1,0 +1,2 @@
+# Files must stay byte-exact so the rebuilt HTML matches the original.
+* -text
