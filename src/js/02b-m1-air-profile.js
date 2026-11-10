@@ -7,8 +7,9 @@
  *
  *  - window.devicePixelRatio: the canvas backing store is CSS size x DPR. On the
  *    Air's 2x Retina panel a fullscreen canvas is ~5.2M pixels, which the fanless
- *    8-core GPU cannot sustain. Capping the ratio to 1 renders a quarter of the
- *    pixels and upscales by an exact 2x, which stays sharp with pixelated scaling.
+ *    8-core GPU cannot sustain. Measured on a real M1 Air, 1x and 1.5x run at
+ *    about the same frame rate while native 2x fluctuates heavily, so the default
+ *    cap is 1.5: roughly half the pixels of native, noticeably sharper than 1x.
  *
  *  - navigator.hardwareConcurrency: the mesh worker pool ceiling is cores - 2,
  *    up to 4. The M1 reports 8 cores but only 4 are performance cores, already
@@ -17,8 +18,8 @@
  *
  * The render scale cap works on every machine and can be changed while the game
  * runs through window.__eaglerRenderScale (used by the performance panel); the
- * choice is remembered in localStorage. Only the M1 Air gets a default cap of 1
- * and the reduced core count.
+ * choice is remembered in localStorage. Only the M1 Air gets a default cap of
+ * 1.5 and the reduced core count.
  *
  * URL parameters:
  *   ?m1=1            force the M1 profile on (any machine)
@@ -108,7 +109,7 @@
 	// null means "no cap": render at the display's native ratio.
 	var cap = validScale(params.get("renderscale"));
 	if (cap === null) cap = storedScale();
-	if (cap === null && detected.match) cap = 1;
+	if (cap === null && detected.match) cap = 1.5;
 
 	var dprDesc = Object.getOwnPropertyDescriptor(window, "devicePixelRatio");
 	if (!dprDesc && window.Window) {
