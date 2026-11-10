@@ -79,16 +79,34 @@ URL 参数：`?m1=1` 强制开启，`?m1=0` 关闭，`?renderscale=N` 调整分�
 
 ## 性能面板
 
-`src/js/02c-perf-panel.js` 在左上角显示帧率小标签，点击展开面板：最差帧时间、游戏帧
-时间（进入世界后）、画布分辨率、mesh worker 状态，以及 1x / 1.5x / Native 三个渲染
-分辨率按钮。按钮通过 `window.__eaglerRenderScale.set()` 即时生效（游戏每帧重读
-`devicePixelRatio`），选择存在 localStorage 的 `eaglercraft26.renderScale` 里，在所有
-机器上都可用。`?panel=0` 关闭面板。
+`src/js/02c-perf-panel.js`。左上角的帧率小标签可以拖动，点击展开面板（界面是英文）：
 
+- 帧时间曲线：最近 30 秒，每半秒一根柱子，高度是这半秒里最慢的一帧，横线是 60 帧
+- 最差帧时间、游戏帧时间（进入世界后）、画布分辨率、mesh worker、M1 配置状态
+- 渲染分辨率滑块（0.5x 到屏幕原生，步进 0.25）和 Auto 按钮
+- 网络：游戏自己的 WebSocket 和 WebRTC 数据通道的上下行速度、累计流量、当前连接的
+  主机和建立连接用时
+- 电量（仅 Chrome）、游玩时长、全屏按钮
+- My server：保存用户自己服务器的完整连接地址，一键测试是否可达
+
+实现要点：
+
+- 滑块的值是玩家选的清晰度上限，存在 localStorage 的 `eaglercraft26.renderScale`。
+  Auto 在 1x 和这个上限之间自动调整，调用 `__eaglerRenderScale.set(值, true)`，
+  第二个参数表示临时调整、不覆盖玩家的选择。
+- Auto 的规则（`createAuto`）：帧率连续约 1 秒低于刷新率的 80% 就降 0.25；连续约 8 秒
+  不低于 95% 才升 0.25；每次调整后冷却 2 秒；刚升上去又被迫降下来时，下次升之前的
+  等待时间翻倍（最长 2 分钟），避免来回跳。只在 `__eaglerGameReady` 之后运行。
+- 网络计数靠 `class extends` 包了一层 `WebSocket` 和 `RTCPeerConnection`，并改了
+  `RTCDataChannel.prototype.send`。worker 里的连接统计不到。连接是否存活看
+  `readyState`，不等 close 事件。
 - 帧率是用 `requestAnimationFrame` 的回调间隔估的，不是游戏内部的计数。
 - 页面的 `<meta charset>` 在 75MB 之后才出现，新增的 JS 只用 ASCII 字符，界面文字用英文。
 - 游戏全屏的是 `#game_frame`，面板在全屏时会被移进去，否则看不到。
-- 面板用 `<div>` 而不是 `<button>`，避免获得键盘焦点后被游戏里的空格/回车触发。
+- 按钮用 `<div>` 而不是 `<button>`，滑块 `tabIndex=-1` 且用完立刻 `blur()`，避免获得键盘
+  焦点后被游戏里的按键触发。地址输入用 `prompt()`，同样是为了不和游戏抢键盘。
+- `?panel=0` 关闭面板和网络计数。内部状态在 `window.__eaglerPerfPanel`。
+- 自动调节在真实 M1 上还没实测过，只测过控制逻辑和在无头浏览器里的降档。
 
 ## 源码参考
 

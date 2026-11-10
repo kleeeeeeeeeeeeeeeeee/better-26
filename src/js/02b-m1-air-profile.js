@@ -103,13 +103,21 @@
 		value = parseFloat(value);
 		return value >= 0.5 && value <= 3 ? value : null;
 	}
-	function storedScale() {
-		try { return validScale(localStorage.getItem(SCALE_KEY)); } catch (e) { return null; }
-	}
 	// null means "no cap": render at the display's native ratio.
 	var cap = validScale(params.get("renderscale"));
-	if (cap === null) cap = storedScale();
-	if (cap === null && detected.match) cap = 1.5;
+	var chosen = cap !== null;
+	if (!chosen) {
+		var stored = null;
+		try { stored = localStorage.getItem(SCALE_KEY); } catch (e) {}
+		if (stored === "native") {
+			chosen = true;
+		} else if (validScale(stored) !== null) {
+			cap = validScale(stored);
+			chosen = true;
+		}
+	}
+	// Only the M1 Air gets a default cap; a stored "native" choice is respected.
+	if (!chosen && detected.match) cap = 1.5;
 
 	var dprDesc = Object.getOwnPropertyDescriptor(window, "devicePixelRatio");
 	if (!dprDesc && window.Window) {
@@ -162,12 +170,16 @@
 		native: nativeRatio,
 		effective: effectiveRatio,
 		// The game re-reads devicePixelRatio every frame, so this applies at once.
-		set: function (value) {
+		// Pass temporary = true for automatic adjustments that should not replace
+		// the scale the player chose.
+		set: function (value, temporary) {
 			cap = value === null ? null : validScale(value);
-			try {
-				if (cap === null) localStorage.setItem(SCALE_KEY, "native");
-				else localStorage.setItem(SCALE_KEY, String(cap));
-			} catch (e) {}
+			if (!temporary) {
+				try {
+					if (cap === null) localStorage.setItem(SCALE_KEY, "native");
+					else localStorage.setItem(SCALE_KEY, String(cap));
+				} catch (e) {}
+			}
 			updateScaling();
 			return cap;
 		}
