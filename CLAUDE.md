@@ -7,10 +7,11 @@ base64 数据块；为了便于阅读和修改代码，仓库里保存的是拆�
 ## 目录结构
 
 - `src/index.template.html` — HTML 骨架，被拆出去的内容在原位置换成占位符
-- `src/js/` — 7 段内联脚本，按在页面中出现的顺序编号
+- `src/js/` — 8 段内联脚本，按在页面中出现的顺序编号
   - `01-brotli-decoder.js` — Brotli 解码器（已压缩，不可读）
   - `02-inline-payload-loader.js` — 内联数据块的加载与 fetch 拦截
-  - `02b-m1-air-profile.js` — MacBook Air M1 性能配置（后加的，原始文件里没有）
+  - `02b-m1-air-profile.js` — 渲染分辨率控制与 MacBook Air M1 性能配置（后加的）
+  - `02c-perf-panel.js` — 屏幕左上角的性能面板（后加的）
   - `03-debug-flags.js` — URL 调试参数与诊断开关
   - `04-teavm-wasmgc-runtime.js` — TeaVM Wasm-GC 运行时（已压缩）
   - `05-worker-bootstrap.js` — 页面与 worker 共用的 Wasm-GC 启动逻辑
@@ -66,6 +67,19 @@ URL 参数：`?m1=1` 强制开启，`?m1=0` 关闭，`?renderscale=N` 调整分�
 
 这两项是按源码逻辑推出的，只在无头 Chromium 里验证过生效和能正常启动，没有在真实
 M1 上测过帧率。由于加了这个文件，`build.py` 现在会报告与原文件不同，属于预期。
+
+## 性能面板
+
+`src/js/02c-perf-panel.js` 在左上角显示帧率小标签，点击展开面板：最差帧时间、游戏帧
+时间（进入世界后）、画布分辨率、mesh worker 状态，以及 1x / 1.5x / Native 三个渲染
+分辨率按钮。按钮通过 `window.__eaglerRenderScale.set()` 即时生效（游戏每帧重读
+`devicePixelRatio`），选择存在 localStorage 的 `eaglercraft26.renderScale` 里，在所有
+机器上都可用。`?panel=0` 关闭面板。
+
+- 帧率是用 `requestAnimationFrame` 的回调间隔估的，不是游戏内部的计数。
+- 页面的 `<meta charset>` 在 75MB 之后才出现，新增的 JS 只用 ASCII 字符，界面文字用英文。
+- 游戏全屏的是 `#game_frame`，面板在全屏时会被移进去，否则看不到。
+- 面板用 `<div>` 而不是 `<button>`，避免获得键盘焦点后被游戏里的空格/回车触发。
 
 ## 源码参考
 
