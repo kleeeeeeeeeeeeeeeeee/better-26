@@ -5,7 +5,8 @@
  * A small pill shows the frame rate; drag it to move it, click it to open the
  * panel. The panel has:
  *   - a 30 second frame time graph
- *   - frame time, canvas resolution, mesh worker and M1 profile state
+ *   - frame time, canvas resolution and M1 profile state
+ *   - counters of the chunk meshing pipeline (workers, queue, errors)
  *   - a render scale slider and an automatic mode that lowers the scale while
  *     the frame rate is low and raises it again once it has been steady
  *   - network traffic of the game's WebSocket and WebRTC connections
@@ -290,8 +291,16 @@
 		row("frame", "Worst frame");
 		row("game", "Game frame");
 		row("res", "Resolution");
-		row("mesh", "Mesh workers");
 		row("m1", "M1 profile");
+
+		// Chunk meshing pipeline, for diagnosing terrain that stays invisible.
+		section("Chunk meshing");
+		row("mesh", "Workers");
+		row("meshQueue", "Waiting");
+		row("meshFlight", "In progress");
+		row("meshDone", "Built");
+		row("meshInline", "Built inline");
+		row("meshErrors", "Errors");
 
 		if (scale) {
 			section("Render scale");
@@ -554,8 +563,22 @@
 		var canvas = document.querySelector("._eaglercraftX_canvas_element");
 		rows.res.textContent = canvas ? canvas.width + " x " + canvas.height : "--";
 
-		rows.meshLine.style.display = pool ? "flex" : "none";
-		if (pool) rows.mesh.textContent = (pool.ready | 0) + " ready, max " + (pool.workerCeiling | 0);
+		// Counters published by the game's mesh worker pool every frame.
+		if (pool) {
+			rows.mesh.textContent = (pool.ready | 0) + " ready / " + (pool.spawned | 0) + " started, max "
+				+ (pool.workerCeiling | 0);
+			rows.meshQueue.textContent = (pool.queuedSections | 0) + " sections, " + (pool.queuedResults | 0) + " results";
+			rows.meshFlight.textContent = (pool.inFlight | 0) + " jobs";
+			rows.meshDone.textContent = String(Math.round(pool.completedJobs != null ? pool.completedJobs : pool.jobs || 0));
+			rows.meshInline.textContent = String(Math.round(pool.inline || 0));
+			rows.meshErrors.textContent = (pool.errors | 0) + " errors, " + (pool.cancelledJobs | 0) + " cancelled, "
+				+ (pool.shrinks | 0) + " shrinks";
+			rows.meshErrors.style.color = pool.errors > 0 ? "#FF7A7A" : "";
+		} else {
+			rows.mesh.textContent = "not started";
+			rows.meshQueue.textContent = rows.meshFlight.textContent = rows.meshDone.textContent = "--";
+			rows.meshInline.textContent = rows.meshErrors.textContent = "--";
+		}
 
 		var profile = window.__eaglerM1Profile;
 		rows.m1.textContent = profile && profile.active ? "on" : "off";
