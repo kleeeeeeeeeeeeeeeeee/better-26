@@ -124,10 +124,22 @@ Record log 在 M1 Air 上录到的数据（新建随机世界，默认设置）�
 - mesh worker 1 个就绪，33 秒只完成 265 个任务，`queuedSections` 基本为 0，`errors` 为 0，
   任务数有长达 12 秒完全不涨的时段
 
-结论：网格管线是空闲的，不是瓶颈；区块段没有被提交去建网格，问题在上游（服务端生成
-或发送区块的速度，或者客户端要等相邻区块到齐才渲染）。下一步让用户加 `?perfdebug`
-再录一次，游戏会输出 `[EagPerf]`（服务端 tick、worldgen、chunk send）和
-`[EagPerfClient]`（区块包、渲染各阶段）的统计。
+结论：网格管线是空闲的，不是瓶颈，问题在上游。
+
+`?perfdebug` 的录制（54 秒，单人新世界，玩家全程在移动）进一步确认是内置服务端供应
+区块太慢：
+
+- 客户端收到的 `ClientboundLevelChunkWithLightPacket`：前 15 秒 51 个，之后约 25 秒
+  一个都没有，玩家慢下来后才又来了 35 个。全程共 86 个，约 1.6 个/秒
+- 同期收到 119 个 `ClientboundForgetLevelChunkPacket`，卸载的比加载的多
+- 没有区块的那 25 秒里 `SetChunkCacheCenter` 和 `SetTime` 照常到达，服务端没卡死
+- `level render ... visible=0` 持续了约 35 秒：玩家已经走出所有已加载的区块
+- 客户端各阶段耗时都在 1 ms 以内，`packet queue depth=0`，客户端没有积压
+
+也就是玩家移动的速度超过了浏览器里服务端生成新地形的速度。`?perfdebug` 只能录到
+客户端的 `[EagPerfClient]`，服务端 worker 的 `[EagPerf]` 日志不会转发到页面，所以服务端
+内部哪一步慢还没有数据。JS 层改不了生成速度；能缓解的是调低渲染距离、少在新地形里
+高速移动，根本办法是用原生 Java 服务端。
 
 ## 源码参考
 
