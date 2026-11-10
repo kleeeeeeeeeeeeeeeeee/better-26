@@ -35,6 +35,7 @@ PAYLOAD_NAMES = {
 SCRIPT_NAMES = [
     "01-brotli-decoder.js",
     "02-inline-payload-loader.js",
+    "02b-m1-air-profile.js",
     "03-debug-flags.js",
     "04-teavm-wasmgc-runtime.js",
     "05-worker-bootstrap.js",

@@ -7,9 +7,10 @@ base64 数据块；为了便于阅读和修改代码，仓库里保存的是拆�
 ## 目录结构
 
 - `src/index.template.html` — HTML 骨架，被拆出去的内容在原位置换成占位符
-- `src/js/` — 6 段内联脚本，按在页面中出现的顺序编号
+- `src/js/` — 7 段内联脚本，按在页面中出现的顺序编号
   - `01-brotli-decoder.js` — Brotli 解码器（已压缩，不可读）
   - `02-inline-payload-loader.js` — 内联数据块的加载与 fetch 拦截
+  - `02b-m1-air-profile.js` — MacBook Air M1 性能配置（后加的，原始文件里没有）
   - `03-debug-flags.js` — URL 调试参数与诊断开关
   - `04-teavm-wasmgc-runtime.js` — TeaVM Wasm-GC 运行时（已压缩）
   - `05-worker-bootstrap.js` — 页面与 worker 共用的 Wasm-GC 启动逻辑
@@ -48,3 +49,38 @@ base64 数据块；为了便于阅读和修改代码，仓库里保存的是拆�
   能改的是加载、启动、界面这一层的 JS 和 CSS。
 - 要拆分新版本的 HTML：`python3 tools/split.py <新文件.html>`，它会覆盖 `src/`、
   `payloads/` 和 `tools/original.sha256`。
+
+## MacBook Air M1 性能配置
+
+`src/js/02b-m1-air-profile.js` 在游戏启动前检测 M1 Air（Mac + GPU 名称为 Apple M1；
+Safari 隐藏 GPU 名称时改用 8 核 + 13.3 寸屏幕分辨率判断），命中后做两件事：
+
+- 把 `window.devicePixelRatio` 封顶为 1：画布像素数降到原来的四分之一
+  （全屏 2880×1800 → 1440×900），整数倍放大保持锐利
+- 把 `navigator.hardwareConcurrency` 报告为 4：mesh worker 上限从 4 降到 2
+  （上限 = 核心数 − 2），启动数量仍由游戏自适应
+
+URL 参数：`?m1=1` 强制开启，`?m1=0` 关闭，`?renderscale=N` 调整分辨率上限
+（0.5–3，默认 1）。状态见 `window.__eaglerM1Profile`；在 Mac 上启动时屏幕顶部还会
+显示约 10 秒的状态横幅（用户打不开 F12，靠它确认是否生效）。
+
+这两项是按源码逻辑推出的，只在无头 Chromium 里验证过生效和能正常启动，没有在真实
+M1 上测过帧率。由于加了这个文件，`build.py` 现在会报告与原文件不同，属于预期。
+
+## 源码参考
+
+本仓库只有编译产物，没有 Java 源码。需要读游戏逻辑（例如 LAN world、relay）时，
+克隆下面的公开仓库到仓库目录之外再阅读，不要把它们复制进本仓库（约 330MB）：
+
+- `https://github.com/kingjoeishere/Eaglercraft-26.2-u2-workspace` — 26.2 的 Java
+  源码工作区（比本仓库的构建略新，不完全一致）
+  - LAN 房主侧：`platform-teavm/src/main/java/net/lax1dude/eaglercraft/v1_8/sp/internal/ClientPlatformSingleplayer.java`
+  - P2P 房主：`platform-teavm/src/main/java/net/lax1dude/eaglercraft/v1_8/internal/teavm/LegacyLANHost.java`
+  - relay 配置：`game/src/main/java/net/lax1dude/eaglercraft/v1_8/sp/relay/RelaySettings.java`
+  - 内置服务端主循环：`game/src/main/java/net/minecraft/server/MinecraftServer.java`
+- `https://github.com/kkudzu/relay` — 默认 relay 的服务端源码（`src/lan-rooms.js`、
+  `cloudflare/worker.js`），LAN 房间人数上限和限流都在这里
+
+克隆命令（公开仓库，无需授权）：
+
+    GIT_LFS_SKIP_SMUDGE=1 git clone --depth 1 <url> /home/user/<owner>/<repo>
