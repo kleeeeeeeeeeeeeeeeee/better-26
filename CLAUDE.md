@@ -7,9 +7,10 @@ base64 数据块；为了便于阅读和修改代码，仓库里保存的是拆�
 ## 目录结构
 
 - `src/index.template.html` — HTML 骨架，被拆出去的内容在原位置换成占位符
-- `src/js/` — 6 段内联脚本，按在页面中出现的顺序编号
+- `src/js/` — 7 段内联脚本，按在页面中出现的顺序编号
   - `01-brotli-decoder.js` — Brotli 解码器（已压缩，不可读）
   - `02-inline-payload-loader.js` — 内联数据块的加载与 fetch 拦截
+  - `02b-m1-air-profile.js` — MacBook Air M1 性能配置（后加的，原始文件里没有）
   - `03-debug-flags.js` — URL 调试参数与诊断开关
   - `04-teavm-wasmgc-runtime.js` — TeaVM Wasm-GC 运行时（已压缩）
   - `05-worker-bootstrap.js` — 页面与 worker 共用的 Wasm-GC 启动逻辑
@@ -48,6 +49,22 @@ base64 数据块；为了便于阅读和修改代码，仓库里保存的是拆�
   能改的是加载、启动、界面这一层的 JS 和 CSS。
 - 要拆分新版本的 HTML：`python3 tools/split.py <新文件.html>`，它会覆盖 `src/`、
   `payloads/` 和 `tools/original.sha256`。
+
+## MacBook Air M1 性能配置
+
+`src/js/02b-m1-air-profile.js` 在游戏启动前检测 M1 Air（Mac + GPU 名称为 Apple M1；
+Safari 隐藏 GPU 名称时改用 8 核 + 13.3 寸屏幕分辨率判断），命中后做两件事：
+
+- 把 `window.devicePixelRatio` 封顶为 1：画布像素数降到原来的四分之一
+  （全屏 2880×1800 → 1440×900），整数倍放大保持锐利
+- 把 `navigator.hardwareConcurrency` 报告为 4：mesh worker 上限从 4 降到 2
+  （上限 = 核心数 − 2），启动数量仍由游戏自适应
+
+URL 参数：`?m1=1` 强制开启，`?m1=0` 关闭，`?renderscale=N` 调整分辨率上限
+（0.5–3，默认 1）。状态见 `window.__eaglerM1Profile`。
+
+这两项是按源码逻辑推出的，只在无头 Chromium 里验证过生效和能正常启动，没有在真实
+M1 上测过帧率。由于加了这个文件，`build.py` 现在会报告与原文件不同，属于预期。
 
 ## 源码参考
 
