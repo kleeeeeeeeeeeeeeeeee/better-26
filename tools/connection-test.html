@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>连接测试</title>
+<style>
+	:root { color-scheme: light dark; --ok: #1a7f37; --bad: #c62828; --wait: #8a6d00; --line: rgba(128,128,128,0.35); }
+	body { font: 15px/1.6 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; max-width: 760px; margin: 24px auto; padding: 0 16px; }
+	h1 { font-size: 22px; margin-bottom: 4px; }
+	h2 { font-size: 16px; margin: 26px 0 6px; }
+	p.note { opacity: 0.75; margin: 4px 0 10px; }
+	table { width: 100%; border-collapse: collapse; }
+	td { padding: 7px 6px; border-top: 1px solid var(--line); vertical-align: top; }
+	td.name { width: 44%; }
+	td.name small { display: block; opacity: 0.65; word-break: break-all; }
+	.ok { color: var(--ok); font-weight: 600; }
+	.bad { color: var(--bad); font-weight: 600; }
+	.wait { color: var(--wait); }
+	.detail { display: block; opacity: 0.75; font-size: 13px; word-break: break-word; }
+	input[type=text] { width: 100%; box-sizing: border-box; padding: 8px; font: 13px Menlo, Consolas, monospace; }
+	button { padding: 7px 16px; font-size: 14px; margin: 8px 8px 0 0; cursor: pointer; }
+	#summary { margin-top: 18px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; white-space: pre-wrap; font: 13px Menlo, Consolas, monospace; }
+</style>
+</head>
+<body>
+<h1>连接测试</h1>
+<p class="note">在想测试的网络下（比如学校）用浏览器打开这个文件，它会检查当前网络能不能连到下面这些地址。只做连接检查，不会改动任何设置。</p>
+
+<h2>1. 基础</h2>
+<table id="basic"></table>
+
+<h2>2. 游戏内置的 relay</h2>
+<p class="note">每个测试会真的和 relay 握一次手，收到 relay 的回应才算通过。</p>
+<table id="relays"></table>
+
+<h2>3. Cloudflare 隧道域名</h2>
+<p class="note">快速隧道的地址都在 trycloudflare.com 下面。这里测的是主域名；学校的过滤一般按整个域名拦，所以主域名不通基本说明隧道地址也不通，主域名通则隧道地址多半也通。</p>
+<table id="tunnel"></table>
+
+<h2>4. 你自己的服务器</h2>
+<p class="note">服务器搭好后，把完整的连接地址贴到这里再测。私有模式要带上 token，格式是：<br><code>wss://你的地址/minecraft?target=127.0.0.1:25565&amp;token=你的token</code></p>
+<input type="text" id="custom" placeholder="wss://...">
+<button id="runCustom">测试这个地址</button>
+<table id="customResult"></table>
+
+<div>
+	<button id="rerun">全部重新测试</button>
+	<button id="copy">复制结果</button>
+</div>
+<div id="summary">正在测试…</div>
+
+<script>
+(function () {
+	"use strict";
+	var TIMEOUT = 12000;
+	var results = [];
+
+	function addRow(tableId, name, target) {
+		var table = document.getElementById(tableId);
+		var tr = table.insertRow();
+		var left = tr.insertCell();
+		left.className = "name";
+		left.textContent = name;
+		var small = document.createElement("small");
+		small.textContent = target;
+		left.appendChild(small);
+		var right = tr.insertCell();
+		right.innerHTML = '<span class="wait">测试中…</span>';
+		var record = { name: name, target: target, state: "测试中", detail: "" };
+		results.push(record);
+		return function (ok, detail) {
+			record.state = ok ? "通" : "不通";
+			record.detail = detail || "";
+			right.textContent = "";
+			var badge = document.createElement("span");
+			badge.className = ok ? "ok" : "bad";
+			badge.textContent = ok ? "通" : "不通";
+			right.appendChild(badge);
+			if (detail) {
+				var d = document.createElement("span");
+				d.className = "detail";
+				d.textContent = detail;
+				right.appendChild(d);
+			}
+			renderSummary();
+		};
+	}
+
+	function renderSummary() {
+		var lines = ["时间: " + new Date().toLocaleString(), "浏览器: " + navigator.userAgent, ""];
+		results.forEach(function (r) {
+			lines.push("[" + r.state + "] " + r.name + "  " + r.target + (r.detail ? "\n      " + r.detail : ""));
+		});
+		document.getElementById("summary").textContent = lines.join("\n");
+	}
+
+	// Fetch a URL that allows cross-origin reads and check its body, so a
+	// filter's block page cannot be mistaken for the real site.
+	function testFetch(done, url, expect) {
+		var controller = new AbortController();
+		var timer = setTimeout(function () { controller.abort(); }, TIMEOUT);
+		var started = performance.now();
+		fetch(url, { cache: "no-store", signal: controller.signal }).then(function (res) {
+			return res.text().then(function (text) {
+				clearTimeout(timer);
+				var ms = Math.round(performance.now() - started);
+				if (text.indexOf(expect) >= 0) done(true, ms + " ms");
+				else done(false, "收到了回应，但内容不是这个网站的（可能是拦截页面）。HTTP " + res.status);
+			});
+		}).catch(function (err) {
+			clearTimeout(timer);
+			done(false, err && err.name === "AbortError" ? "超时，" + TIMEOUT / 1000 + " 秒没有回应" : "连接失败（被拦截、域名解析不了或没有网络）");
+		});
+	}
+
+	// Open a WebSocket, optionally send a first frame, and pass once the
+	// server answers in a way only the real relay would.
+	function testSocket(done, url, options) {
+		options = options || {};
+		var finished = false, opened = false, started = performance.now(), ws;
+		function finish(ok, detail) {
+			if (finished) return;
+			finished = true;
+			clearTimeout(timer);
+			try { ws.close(); } catch (e) {}
+			done(ok, detail);
+		}
+		var timer = setTimeout(function () {
+			finish(false, opened ? "连上了，但 " + TIMEOUT / 1000 + " 秒内没有收到回应" : "超时，" + TIMEOUT / 1000 + " 秒没连上");
+		}, TIMEOUT);
+		try {
+			ws = new WebSocket(url);
+		} catch (e) {
+			finish(false, "地址格式不对: " + e.message);
+			return;
+		}
+		ws.binaryType = "arraybuffer";
+		ws.onopen = function () {
+			opened = true;
+			var ms = Math.round(performance.now() - started);
+			if (options.send) {
+				try { ws.send(options.send); } catch (e) {}
+			}
+			if (!options.expect) finish(true, "连接已建立，" + ms + " ms");
+		};
+		ws.onmessage = function (ev) {
+			var ms = Math.round(performance.now() - started);
+			if (!options.expect || options.expect(ev.data)) finish(true, "relay 有回应，" + ms + " ms");
+		};
+		ws.onclose = function (ev) {
+			if (opened) {
+				// The server accepted the connection and then closed it itself:
+				// the network path works even if the server said no.
+				finish(true, "能连到服务器，服务器随后关闭了连接（代码 " + ev.code
+					+ (ev.reason ? "，" + ev.reason : "") + "）");
+			} else {
+				finish(false, "没连上（代码 " + ev.code + "）。可能被网络拦截、服务器没开，或地址和 token 不对");
+			}
+		};
+	}
+
+	function startsWith(bytes) {
+		return function (data) {
+			if (!(data instanceof ArrayBuffer)) return false;
+			var view = new Uint8Array(data);
+			for (var i = 0; i < bytes.length; ++i) if (view[i] !== bytes[i]) return false;
+			return true;
+		};
+	}
+
+	function runAll() {
+		results = [];
+		["basic", "relays", "tunnel", "customResult"].forEach(function (id) {
+			document.getElementById(id).innerHTML = "";
+		});
+
+		testFetch(addRow("basic", "能不能上网", "www.cloudflare.com"),
+			"https://www.cloudflare.com/cdn-cgi/trace", "h=www.cloudflare.com");
+
+		// Host handshake of the Eaglercraft LAN relay protocol; the relay answers
+		// with a packet that starts 0x00 0x01 and carries a join code.
+		var hostHandshake = new Uint8Array([0x00, 0x01, 0x01, 0x00]);
+		testSocket(addRow("relays", "Cloudflare public relay", "eagler-minecraft-relay.u2471966200.workers.dev"),
+			"wss://eagler-minecraft-relay.u2471966200.workers.dev/", { send: hostHandshake, expect: startsWith([0x00, 0x01]) });
+		testSocket(addRow("relays", "Heroku public relay", "oxer-26-2-relay-c5f9ad499e09.herokuapp.com"),
+			"wss://oxer-26-2-relay-c5f9ad499e09.herokuapp.com/lan/host", {
+				expect: function (data) { return typeof data === "string" && data.indexOf('"hosted"') >= 0; }
+			});
+		testSocket(addRow("relays", "shhnowisnottheti relay", "relay.shhnowisnottheti.me"),
+			"wss://relay.shhnowisnottheti.me/", { send: hostHandshake, expect: startsWith([0x00, 0x01]) });
+
+		testFetch(addRow("tunnel", "trycloudflare.com 主域名", "trycloudflare.com"),
+			"https://trycloudflare.com/cdn-cgi/trace", "h=trycloudflare.com");
+
+		renderSummary();
+	}
+
+	function runCustom() {
+		var url = document.getElementById("custom").value.trim();
+		if (!url) return;
+		url = url.replace(/^https:/i, "wss:").replace(/^http:/i, "ws:");
+		document.getElementById("customResult").innerHTML = "";
+		results = results.filter(function (r) { return r.name !== "你的服务器"; });
+		// Never show the token in the result text.
+		var shown = url.replace(/([?&]token=)[^&]*/i, "$1(已隐藏)");
+		testSocket(addRow("customResult", "你的服务器", shown), url);
+	}
+
+	document.getElementById("rerun").onclick = runAll;
+	document.getElementById("runCustom").onclick = runCustom;
+	document.getElementById("copy").onclick = function () {
+		var text = document.getElementById("summary").textContent;
+		var button = this;
+		function flash(label) { button.textContent = label; setTimeout(function () { button.textContent = "复制结果"; }, 1500); }
+		if (navigator.clipboard && navigator.clipboard.writeText) {
+			navigator.clipboard.writeText(text).then(function () { flash("已复制"); }, function () { flash("复制失败，请手动选中"); });
+		} else {
+			flash("请手动选中复制");
+		}
+	};
+	runAll();
+})();
+</script>
+</body>
+</html>

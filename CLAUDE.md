@@ -29,6 +29,8 @@ base64 数据块；为了便于阅读和修改代码，仓库里保存的是拆�
   可直接作为 26.2 Java 服务端的 `world`。游戏里的 “Convert to Vanilla” 按钮在源码里是
   写死禁用的，所以用这个脚本代替。用用户的真实存档跑过：6623 个地形区块的坐标和
   `DataVersion`（4903，即 26.2）全部核对一致；还没在真正的 26.2 服务端上加载过
+- `tools/connection-test.html` — 独立的连接测试页，在目标网络下用浏览器打开，检查能否连到
+  内置 relay、trycloudflare.com 以及用户自己的服务器地址
 - `dist/` — 构建输出，已加入 `.gitignore`
 
 ## 重新生成 HTML
