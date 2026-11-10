@@ -20,6 +20,9 @@
  *   ?m1=0            force it off
  *   ?renderscale=N   device pixel ratio cap, 0.5 to 3 (default 1)
  * ?meshworkers=N still sets an exact mesh worker count as before.
+ *
+ * A status banner is shown for a few seconds at startup on Macs, so the result
+ * can be checked without opening the developer tools.
  */
 (function () {
 	"use strict";
@@ -49,16 +52,37 @@
 
 	function detect() {
 		var isMac = /Mac/.test(navigator.platform || "") && !(navigator.maxTouchPoints > 1);
-		if (!isMac) return { match: false, renderer: "" };
+		if (!isMac) return { match: false, renderer: "", mac: false };
 		var renderer = gpuRenderer();
 		// Chrome and Firefox name the chip; Safari only reports "Apple GPU".
 		var named = /Apple M1(?!\s*(Pro|Max|Ultra))/.test(renderer);
 		var masked = /^Apple GPU$/.test(renderer) && (navigator.hardwareConcurrency | 0) === 8 && isAirPanel();
-		return { match: named || masked, renderer: renderer };
+		return { match: named || masked, renderer: renderer, mac: true };
 	}
 
-	var detected = forced === "1" ? { match: true, renderer: "forced" }
-		: forced === "0" ? { match: false, renderer: "disabled" } : detect();
+	var detected = forced === "1" ? { match: true, renderer: "forced", mac: true }
+		: forced === "0" ? { match: false, renderer: "disabled", mac: true } : detect();
+
+	// On-screen status, for browsers where the developer console is unavailable.
+	function banner(text) {
+		function show() {
+			try {
+				var el = document.createElement("div");
+				el.id = "eag_m1_profile_banner";
+				el.textContent = text;
+				el.style.cssText = "position:fixed;z-index:2147483647;left:50%;top:12px;"
+					+ "transform:translateX(-50%);max-width:90vw;padding:8px 14px;border-radius:6px;"
+					+ "background:rgba(0,0,0,0.8);color:#fff;font:13px/1.4 sans-serif;"
+					+ "text-align:center;pointer-events:none;transition:opacity 600ms linear";
+				document.body.appendChild(el);
+				setTimeout(function () { el.style.opacity = "0"; }, 9000);
+				setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 10000);
+			} catch (e) {}
+		}
+		if (document.body) show();
+		else document.addEventListener("DOMContentLoaded", show, { once: true });
+	}
+
 	var profile = window.__eaglerM1Profile = {
 		active: detected.match,
 		renderer: detected.renderer,
@@ -66,7 +90,14 @@
 		nativePixelRatio: window.devicePixelRatio || 1,
 		reportedCores: navigator.hardwareConcurrency | 0
 	};
-	if (!detected.match) return;
+	if (!detected.match) {
+		if (detected.mac) {
+			banner(forced === "0" ? "M1 profile: OFF (?m1=0)"
+				: "M1 profile: OFF - this Mac was not detected as an M1 Air (GPU: "
+					+ (detected.renderer || "unknown") + "). Add ?m1=1 to the address to force it on.");
+		}
+		return;
+	}
 
 	// ---- Render resolution cap ----
 	var cap = parseFloat(params.get("renderscale"));
@@ -122,6 +153,9 @@
 		profile.reportedCores = 4;
 	} catch (e) {}
 
+	banner("M1 profile: ON - render scale " + (profile.renderScale === null ? "unchanged" : profile.renderScale)
+		+ " (screen is " + profile.nativePixelRatio + "x), mesh workers max 2"
+		+ (forced === "1" ? " (forced by ?m1=1)" : ""));
 	try {
 		console.log("[shell] MacBook Air M1 profile active: render scale " + profile.renderScale
 			+ " (native " + profile.nativePixelRatio + "), cores reported as " + profile.reportedCores
