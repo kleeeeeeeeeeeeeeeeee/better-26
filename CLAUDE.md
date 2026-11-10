@@ -48,3 +48,21 @@ base64 数据块；为了便于阅读和修改代码，仓库里保存的是拆�
   能改的是加载、启动、界面这一层的 JS 和 CSS。
 - 要拆分新版本的 HTML：`python3 tools/split.py <新文件.html>`，它会覆盖 `src/`、
   `payloads/` 和 `tools/original.sha256`。
+
+## 源码参考
+
+本仓库只有编译产物，没有 Java 源码。需要读游戏逻辑（例如 LAN world、relay）时，
+克隆下面的公开仓库到仓库目录之外再阅读，不要把它们复制进本仓库（约 330MB）：
+
+- `https://github.com/kingjoeishere/Eaglercraft-26.2-u2-workspace` — 26.2 的 Java
+  源码工作区（比本仓库的构建略新，不完全一致）
+  - LAN 房主侧：`platform-teavm/src/main/java/net/lax1dude/eaglercraft/v1_8/sp/internal/ClientPlatformSingleplayer.java`
+  - P2P 房主：`platform-teavm/src/main/java/net/lax1dude/eaglercraft/v1_8/internal/teavm/LegacyLANHost.java`
+  - relay 配置：`game/src/main/java/net/lax1dude/eaglercraft/v1_8/sp/relay/RelaySettings.java`
+  - 内置服务端主循环：`game/src/main/java/net/minecraft/server/MinecraftServer.java`
+- `https://github.com/kkudzu/relay` — 默认 relay 的服务端源码（`src/lan-rooms.js`、
+  `cloudflare/worker.js`），LAN 房间人数上限和限流都在这里
+
+克隆命令（公开仓库，无需授权）：
+
+    GIT_LFS_SKIP_SMUDGE=1 git clone --depth 1 <url> /home/user/<owner>/<repo>
