@@ -5,12 +5,15 @@
  * A small pill shows the frame rate; drag it to move it, click it to open the
  * panel. The panel has:
  *   - a 30 second frame time graph
- *   - frame time, canvas resolution, mesh worker and M1 profile state
+ *   - frame time, canvas resolution and M1 profile state
+ *   - counters of the chunk meshing pipeline (workers, queue, errors)
  *   - a render scale slider and an automatic mode that lowers the scale while
  *     the frame rate is low and raises it again once it has been steady
  *   - network traffic of the game's WebSocket and WebRTC connections
  *   - battery level and play time
  *   - a fullscreen button
+ *   - a log recorder that samples everything above for 60 seconds (or until
+ *     stopped) and downloads the result as a text file
  *   - a reachability check for the player's own server address
  * Free the mouse with Esc first when in a world.
  *
@@ -162,6 +165,102 @@
 		};
 	}
 
+	// ---------------------------------------------------------------- recorder
+	// Samples the panel's numbers twice a second and collects the game's own log
+	// lines, then downloads everything as one text file. Stops by itself.
+	var RECORD_MS = 60000;
+	var recording = null;   // { startedAt, samples, lines, timer, restoreLog }
+	var recordButton = null;
+	var COLUMNS = ["t", "fps", "worstMs", "gameMs", "gameP95", "canvas", "scale", "ready", "spawned", "desired",
+		"queuedSections", "queuedResults", "inFlight", "dispatcherInFlight", "jobs", "completed", "inline",
+		"errors", "cancelled", "shrinks", "heapPressure", "downKBs", "upKBs"];
+
+	function recordSample() {
+		if (!recording) return;
+		var pool = window.__meshWorkerPool || {};
+		var canvas = document.querySelector("._eaglercraftX_canvas_element");
+		function n(value, digits) { return typeof value === "number" ? +value.toFixed(digits || 0) : ""; }
+		recording.samples.push([
+			((Date.now() - recording.startedAt) / 1000).toFixed(1), n(fps, 1), n(worstShown, 1),
+			n(pool.frameEwmaMs, 1), n(pool.frameP95Ms, 1),
+			canvas ? canvas.width + "x" + canvas.height : "", scale ? n(scale.effective(), 2) : "",
+			n(pool.ready), n(pool.spawned), n(pool.desiredWorkers), n(pool.queuedSections), n(pool.queuedResults),
+			n(pool.inFlight), n(pool.dispatcherInFlight), n(pool.jobs), n(pool.completedJobs), n(pool.inline),
+			n(pool.errors), n(pool.cancelledJobs), n(pool.shrinks), n(pool.heapPressure, 3),
+			n(net.downRate / 1024, 1), n(net.upRate / 1024, 1)
+		].join("\t"));
+	}
+
+	function snapshot() {
+		try { return JSON.stringify(window.__meshWorkerPool || null); } catch (e) { return "unavailable"; }
+	}
+
+	function startRecording() {
+		if (recording) return;
+		recording = { startedAt: Date.now(), samples: [], lines: [], poolAtStart: snapshot(), restoreLog: null };
+		// Collect game log lines as they are written, without keeping the whole log.
+		var log = window.__log;
+		if (log && typeof log.push === "function") {
+			var original = log.push;
+			log.push = function () {
+				try {
+					for (var i = 0; i < arguments.length && recording && recording.lines.length < 5000; ++i) {
+						var line = "" + arguments[i];
+						recording.lines.push(((Date.now() - recording.startedAt) / 1000).toFixed(1) + "  "
+							+ (line.length > 600 ? line.slice(0, 600) + "...[cut]" : line));
+					}
+				} catch (e) {}
+				return original.apply(log, arguments);
+			};
+			recording.restoreLog = function () { log.push = original; };
+		}
+		recording.timer = setTimeout(stopRecording, RECORD_MS);
+		recordSample();
+		update();
+	}
+
+	function stopRecording() {
+		if (!recording) return;
+		var done = recording;
+		recording = null;
+		clearTimeout(done.timer);
+		if (done.restoreLog) done.restoreLog();
+		var profile = window.__eaglerM1Profile || {};
+		var params = window.location.search.replace(/([?&]token=)[^&]*/i, "$1(hidden)");
+		var text = [
+			"Eaglercraft 26.2 performance log",
+			"started: " + new Date(done.startedAt).toISOString(),
+			"duration: " + ((Date.now() - done.startedAt) / 1000).toFixed(1) + " s",
+			"browser: " + navigator.userAgent,
+			"url parameters: " + (params || "(none)"),
+			"screen: " + screen.width + "x" + screen.height + ", native pixel ratio " + nativeRatio()
+				+ ", window " + window.innerWidth + "x" + window.innerHeight,
+			"cores reported: " + navigator.hardwareConcurrency + ", device memory: " + (navigator.deviceMemory || "?"),
+			"M1 profile: " + (profile.active ? "on" : "off") + ", GPU: " + (profile.renderer || "?"),
+			"render scale: chosen " + (scale ? (scale.get() === null ? "native" : scale.get()) : "n/a")
+				+ ", auto " + (autoOn ? "on" : "off"),
+			"refresh rate estimate: " + refresh,
+			"",
+			"mesh pool at start: " + done.poolAtStart,
+			"mesh pool at end:   " + snapshot(),
+			"",
+			"== samples (one per half second, tab separated) ==",
+			COLUMNS.join("\t")
+		].concat(done.samples, ["", "== game log lines during the recording (" + done.lines.length + ") =="], done.lines)
+			.join("\n") + "\n";
+		try {
+			var stamp = new Date(done.startedAt).toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
+			var link = document.createElement("a");
+			link.href = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
+			link.download = "eaglercraft-log-" + stamp + ".txt";
+			document.body.appendChild(link);
+			link.click();
+			link.remove();
+			setTimeout(function () { URL.revokeObjectURL(link.href); }, 5000);
+		} catch (e) {}
+		update();
+	}
+
 	// --------------------------------------------------------------------- UI
 	function el(tag, css, text) {
 		var node = document.createElement(tag);
@@ -290,8 +389,16 @@
 		row("frame", "Worst frame");
 		row("game", "Game frame");
 		row("res", "Resolution");
-		row("mesh", "Mesh workers");
 		row("m1", "M1 profile");
+
+		// Chunk meshing pipeline, for diagnosing terrain that stays invisible.
+		section("Chunk meshing");
+		row("mesh", "Workers");
+		row("meshQueue", "Waiting");
+		row("meshFlight", "In progress");
+		row("meshDone", "Built");
+		row("meshInline", "Built inline");
+		row("meshErrors", "Errors");
 
 		if (scale) {
 			section("Render scale");
@@ -361,9 +468,30 @@
 				}
 			} catch (e) {}
 		}));
+		recordButton = clickable(el("div", BUTTON_CSS, "Record log"), function () {
+			if (recording) stopRecording(); else startRecording();
+		});
+		recordButton.title = "Record 60 seconds of performance data and download it. Click again to stop early.";
+		buttons.appendChild(recordButton);
 		body.appendChild(buttons);
 
 		section("My server");
+		// A build with a home server preset (see 02d-home-server.js) can join it
+		// through the game's startup link and tests that address by default.
+		var home = window.__eaglerHomeServer;
+		if (home) {
+			if (!load(SERVER_KEY)) {
+				save(SERVER_KEY, home.relay.replace(/\/+$/, "") + "/minecraft?target=" + encodeURIComponent(home.target)
+					+ (home.token ? "&token=" + encodeURIComponent(home.token) : ""));
+			}
+			var joinLine = el("div", "display:flex;gap:4px;margin-top:3px");
+			var joinButton = clickable(el("div", BUTTON_CSS, "Join " + (home.name || "home server")), function () {
+				window.__eaglerHomeServerJoin();
+			});
+			joinButton.title = "Reload the game and connect to " + (home.name || "the home server");
+			joinLine.appendChild(joinButton);
+			body.appendChild(joinLine);
+		}
 		var serverLine = el("div", "display:flex;gap:4px;margin-top:3px");
 		serverLine.appendChild(clickable(el("div", BUTTON_CSS, "Set address"), function () {
 			var value = window.prompt("Full connection address of your server, for example\n"
@@ -486,6 +614,7 @@
 			frames = 0;
 			worst = 0;
 			windowStart = now;
+			recordSample();
 			update();
 		}
 		requestAnimationFrame(tick);
@@ -535,7 +664,12 @@
 	function update() {
 		if (!root) return;
 		var rounded = Math.round(fps);
-		pill.textContent = (fps ? rounded : "--") + " FPS";
+		var left = recording ? Math.max(0, Math.ceil((RECORD_MS - (Date.now() - recording.startedAt)) / 1000)) : 0;
+		pill.textContent = (fps ? rounded : "--") + " FPS" + (recording ? "  REC " + left + "s" : "");
+		if (recordButton) {
+			recordButton.textContent = recording ? "Stop (" + left + "s)" : "Record log";
+			recordButton.style.background = recording ? "rgba(255,90,90,0.45)" : "transparent";
+		}
 		pill.style.color = !fps ? "#fff" : rounded >= refresh * 0.83 ? "#7CFC7C"
 			: rounded >= refresh * 0.5 ? "#FFD95A" : "#FF7A7A";
 		if (!open) return;
@@ -554,8 +688,22 @@
 		var canvas = document.querySelector("._eaglercraftX_canvas_element");
 		rows.res.textContent = canvas ? canvas.width + " x " + canvas.height : "--";
 
-		rows.meshLine.style.display = pool ? "flex" : "none";
-		if (pool) rows.mesh.textContent = (pool.ready | 0) + " ready, max " + (pool.workerCeiling | 0);
+		// Counters published by the game's mesh worker pool every frame.
+		if (pool) {
+			rows.mesh.textContent = (pool.ready | 0) + " ready / " + (pool.spawned | 0) + " started, max "
+				+ (pool.workerCeiling | 0);
+			rows.meshQueue.textContent = (pool.queuedSections | 0) + " sections, " + (pool.queuedResults | 0) + " results";
+			rows.meshFlight.textContent = (pool.inFlight | 0) + " jobs";
+			rows.meshDone.textContent = String(Math.round(pool.completedJobs != null ? pool.completedJobs : pool.jobs || 0));
+			rows.meshInline.textContent = String(Math.round(pool.inline || 0));
+			rows.meshErrors.textContent = (pool.errors | 0) + " errors, " + (pool.cancelledJobs | 0) + " cancelled, "
+				+ (pool.shrinks | 0) + " shrinks";
+			rows.meshErrors.style.color = pool.errors > 0 ? "#FF7A7A" : "";
+		} else {
+			rows.mesh.textContent = "not started";
+			rows.meshQueue.textContent = rows.meshFlight.textContent = rows.meshDone.textContent = "--";
+			rows.meshInline.textContent = rows.meshErrors.textContent = "--";
+		}
 
 		var profile = window.__eaglerM1Profile;
 		rows.m1.textContent = profile && profile.active ? "on" : "off";
@@ -584,6 +732,8 @@
 	window.__eaglerPerfPanel = {
 		net: net,
 		createAuto: createAuto,
+		startRecording: startRecording,
+		stopRecording: stopRecording,
 		state: function () {
 			return { fps: fps, refresh: refresh, open: open, autoOn: autoOn,
 				autoScale: auto ? auto.current() : null, history: history.length };

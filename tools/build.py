@@ -4,19 +4,21 @@
 Usage: python3 tools/build.py [output.html]
 
 Reads src/index.template.html, replaces every token with the content of the
-file it names (see tools/split.py for the token format) and writes
+file it names (see tools/split.py for the token format; @@EAG:json:<path>@@
+inserts an optional local JSON file, or null when it does not exist) and writes
 dist/eaglercraft-26.2.html. Finally compares the SHA-256 of the result with
 tools/original.sha256 and reports whether the output is byte-identical to the
 original file.
 """
 import base64
 import hashlib
+import json
 import re
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-TOKEN_RE = re.compile(rb"@@EAG:(file|b64):([^:@]+)(?::(\d+))?@@")
+TOKEN_RE = re.compile(rb"@@EAG:(file|b64|json):([^:@]+)(?::(\d+))?@@")
 
 
 def b64_wrap(data: bytes, width: int) -> bytes:
@@ -28,6 +30,14 @@ def b64_wrap(data: bytes, width: int) -> bytes:
 
 def expand(m: "re.Match[bytes]") -> bytes:
     kind, rel, width = m.group(1), m.group(2).decode(), m.group(3)
+    if kind == b"json":
+        # Optional local configuration: the literal null when the file is absent.
+        path = ROOT / rel
+        if not path.exists():
+            return b"null"
+        text = json.dumps(json.loads(path.read_text(encoding="utf-8")))
+        print(f"included local configuration from {rel}")
+        return text.replace("</", "<\\/").encode("utf-8")
     data = (ROOT / rel).read_bytes()
     if kind == b"b64":
         return b64_wrap(data, int(width or 0))

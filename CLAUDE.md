@@ -12,6 +12,7 @@ base64 数据块；为了便于阅读和修改代码，仓库里保存的是拆�
   - `02-inline-payload-loader.js` — 内联数据块的加载与 fetch 拦截
   - `02b-m1-air-profile.js` — 渲染分辨率控制与 MacBook Air M1 性能配置（后加的）
   - `02c-perf-panel.js` — 屏幕左上角的性能面板（后加的）
+  - `02d-home-server.js` — 自建服务器预设（后加的，见下文，尚未验证）
   - `03-debug-flags.js` — URL 调试参数与诊断开关
   - `04-teavm-wasmgc-runtime.js` — TeaVM Wasm-GC 运行时（已压缩）
   - `05-worker-bootstrap.js` — 页面与 worker 共用的 Wasm-GC 启动逻辑
@@ -82,11 +83,18 @@ URL 参数：`?m1=1` 强制开启，`?m1=0` 关闭，`?renderscale=N` 调整分�
 `src/js/02c-perf-panel.js`。左上角的帧率小标签可以拖动，点击展开面板（界面是英文）：
 
 - 帧时间曲线：最近 30 秒，每半秒一根柱子，高度是这半秒里最慢的一帧，横线是 60 帧
-- 最差帧时间、游戏帧时间（进入世界后）、画布分辨率、mesh worker、M1 配置状态
+- 最差帧时间、游戏帧时间（进入世界后）、画布分辨率、M1 配置状态
+- Chunk meshing：区块网格管线的计数（worker 数、排队的区块段和结果、进行中的任务、
+  已完成数、内联完成数、错误/取消/收缩次数），数据来自游戏每帧写的
+  `window.__meshWorkerPool`。用来排查“地形有碰撞但看不见”的问题
 - 渲染分辨率滑块（0.5x 到屏幕原生，步进 0.25）和 Auto 按钮
 - 网络：游戏自己的 WebSocket 和 WebRTC 数据通道的上下行速度、累计流量、当前连接的
   主机和建立连接用时
 - 电量（仅 Chrome）、游玩时长、全屏按钮
+- Record log：录 60 秒（再点一次提前结束），结束后自动下载
+  `eaglercraft-log-<时间>.txt`，内容是每半秒一行的采样（帧率、网格管线计数、网速等）、
+  录制首尾的 `__meshWorkerPool` 完整快照，以及这段时间里游戏写进 `window.__log` 的日志。
+  用户打不开 F12，排查问题时让用户录一段发过来
 - My server：保存用户自己服务器的完整连接地址，一键测试是否可达
 
 实现要点：
@@ -107,6 +115,53 @@ URL 参数：`?m1=1` 强制开启，`?m1=0` 关闭，`?renderscale=N` 调整分�
   焦点后被游戏里的按键触发。地址输入用 `prompt()`，同样是为了不和游戏抢键盘。
 - `?panel=0` 关闭面板和网络计数。内部状态在 `window.__eaglerPerfPanel`。
 - 自动调节在真实 M1 上还没实测过，只测过控制逻辑和在无头浏览器里的降档。
+
+## 自建服务器预设（未完成，未验证）
+
+用户在家里的 Windows 电脑上跑了原版 26.2 服务端 + `kkudzu/relay`（私有模式，需要 token），
+用 Tailscale Funnel 得到固定地址。目标是让 HTML 打开后不用手动填 relay 和 token。
+
+- `local/home-server.json`（已加入 `.gitignore`，**含 token，绝不能提交**）：
+  `{ "name", "relay": "wss://...", "token", "target": "127.0.0.1:25565" }`
+- `build.py` 的 `@@EAG:json:<路径>@@` 占位符：文件存在就内联成 JSON，不存在就是 `null`。
+  模板里用它给 `window.__eaglerHomeServer` 赋值
+- `02d-home-server.js`：启动前把这个 relay 写进 localStorage 的
+  `_eaglercraftX.relay.list.v3`（base64 的 JSON 数组，字段 `name/address/private/token/
+  capability/detected`），放在第一位；游戏用第一个支持 multiplayer 的 relay 连 Java 服务端
+- 加入服务器用游戏自带的启动链接：`?server=<target>&transport=relay`；面板的 My server
+  里有 Join 按钮会带着这两个参数刷新页面
+
+状态：以上格式来自较新的源码，在本仓库这个构建上**还没验证能连通**。无头测试里确认了
+relay 列表能写进去，但游戏首次启动停在 Edit Profile 界面，还没走到连接那一步就被用户
+叫停。用户自己手动填也连不上（带不带 token 都试过），原因待查，需要先看用户的报错和
+界面截图。注意：带了本地配置的构建产物里有 token，不要对它运行 `split.py`，也不要
+把它提交或公开。
+
+## 排查记录：地形有碰撞但看不见
+
+用户反映原版文件就有：面前的地形是空白，但方块选择框能框到，单人和 LAN 都有。用
+Record log 在 M1 Air 上录到的数据（新建随机世界，默认设置）：
+
+- 全程 60 帧，最慢帧 17.7 ms；`?nomesh`（主线程内联建网格）下也一样，主线程很空闲
+- mesh worker 1 个就绪，33 秒只完成 265 个任务，`queuedSections` 基本为 0，`errors` 为 0，
+  任务数有长达 12 秒完全不涨的时段
+
+结论：网格管线是空闲的，不是瓶颈，问题在上游。
+
+`?perfdebug` 的录制（54 秒，单人新世界，玩家全程在移动）进一步确认是内置服务端供应
+区块太慢：
+
+- 客户端收到的 `ClientboundLevelChunkWithLightPacket`：前 15 秒 51 个，之后约 25 秒
+  一个都没有，玩家慢下来后才又来了 35 个。全程共 86 个，约 1.6 个/秒
+- 同期收到 119 个 `ClientboundForgetLevelChunkPacket`，卸载的比加载的多
+- 没有区块的那 25 秒里 `SetChunkCacheCenter` 和 `SetTime` 照常到达，服务端没卡死
+- `level render ... visible=0` 持续了约 35 秒：玩家已经走出所有已加载的区块
+- 客户端各阶段耗时都在 1 ms 以内，`packet queue depth=0`，客户端没有积压
+
+也就是玩家移动的速度超过了浏览器里服务端生成新地形的速度。`?perfdebug` 只能录到
+客户端的 `[EagPerfClient]`，服务端 worker 的 `[EagPerf]` 日志不会转发到页面，所以服务端
+内部哪一步慢还没有数据。JS 层改不了生成速度；能缓解的是调低渲染距离、少在新地形里
+高速移动，根本办法是用原生 Java 服务端。
 
 ## 源码参考
 
