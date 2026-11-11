@@ -72,6 +72,9 @@
 
 	// On-screen status, for browsers where the developer console is unavailable.
 	function banner(text) {
+		// A build made with "panel": false in its local configuration shows no
+		// status interface at all.
+		if (window.__eaglerHomeServer && window.__eaglerHomeServer.panel === false) return;
 		function show() {
 			try {
 				var el = document.createElement("div");

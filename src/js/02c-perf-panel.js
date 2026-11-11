@@ -16,12 +16,15 @@
  *     stopped) and downloads the result as a text file
  * Free the mouse with Esc first when in a world.
  *
- * ?panel=0 removes the panel (and its network counters) for this visit.
+ * ?panel=0 removes the panel (and its network counters) for this visit; a build
+ * whose local configuration has "panel": false never shows it.
  * Internals are exposed on window.__eaglerPerfPanel for diagnostics.
  */
 (function () {
 	"use strict";
 	if (/[?&]panel=0(?:&|$)/.test(window.location.search)) return;
+	// "panel": false in the build's local configuration removes it for good.
+	if (window.__eaglerHomeServer && window.__eaglerHomeServer.panel === false) return;
 	var KEY = "eaglercraft26.perfPanel";
 	var POS_KEY = "eaglercraft26.perfPanel.pos";
 	var AUTO_KEY = "eaglercraft26.perfPanel.autoScale";

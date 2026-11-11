@@ -134,6 +134,8 @@ URL 参数：`?m1=1` 强制开启，`?m1=0` 关闭，`?renderscale=N` 调整分�
   - 加密：把 `token` 换成 `"enc": { "v", "iter", "salt", "iv", "data" }`
 - `tools/encrypt-token.html`：独立页面，在用户自己的浏览器里用密码加密 token（PBKDF2-SHA256
   60 万次 + AES-GCM），输出加密写法的 JSON。这样 token 和密码都不用经过对话
+- 两种写法都可以再加 `"panel": false`：这样构建出来的文件没有性能面板，也不显示启动时
+  的 M1 横幅（渲染分辨率和 mesh worker 的调整照常生效）。给用户朋友的版本用这个
 - `build.py` 的 `@@EAG:json:<路径>@@` 占位符：文件存在就内联成 JSON，不存在就是 `null`。
   模板里用它给 `window.__eaglerHomeServer` 赋值
 - `02d-home-server.js`：启动前把这个 relay 写进 localStorage 的
@@ -155,8 +157,8 @@ token，不要对它运行 `split.py`，也不要提交或公开。
 
 服务器这边的现状（由用户电脑上的另一个助手维护，不在本仓库里）：relay 用所有人共用
 的一个 token；试过“每人一个绑定玩家名的 token”，用户嫌每人一个文件太麻烦，退回了共用
-token；防冒名改用服务端登录插件（计划换成 Paper + AuthMe，玩家进服后 `/register`、
-`/login`）。所以个人构建只需要一个，发给所有玩家。
+token；防冒名改用服务端登录插件（Paper + AuthMe，玩家进服后 `/register`、`/login`）。
+个人构建有两个：用户自己的带面板，发给朋友的不带面板（`"panel": false`），token 相同。
 
 ## 排查记录：地形有碰撞但看不见
 

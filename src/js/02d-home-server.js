@@ -3,7 +3,9 @@
  * Home server preset.
  *
  * window.__eaglerHomeServer is filled in at build time from local/home-server.json
- * (kept out of the repository) and is null in a plain build. Two forms:
+ * (kept out of the repository) and is null in a plain build. An optional
+ * "panel": false in either form builds a copy without the performance panel
+ * and start-up banner (see 02b and 02c). Two forms:
  *
  *   { "name": "Home server", "relay": "wss://host", "target": "127.0.0.1:25565", "token": "..." }
  *   { "name": "Home server", "relay": "wss://host", "target": "127.0.0.1:25565",
