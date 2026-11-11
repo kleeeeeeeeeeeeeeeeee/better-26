@@ -30,6 +30,7 @@ base64 数据块；为了便于阅读和修改代码，仓库里保存的是拆�
   可直接作为 26.2 Java 服务端的 `world`。游戏里的 “Convert to Vanilla” 按钮在源码里是
   写死禁用的，所以用这个脚本代替。用用户的真实存档跑过：6623 个地形区块的坐标和
   `DataVersion`（4903，即 26.2）全部核对一致；还没在真正的 26.2 服务端上加载过
+- `tools/encrypt-token.html` — 独立页面，本地用密码加密 relay token，见“自建服务器预设”
 - `tools/connection-test.html` — 独立的连接测试页，在目标网络下用浏览器打开，检查能否连到
   内置 relay、trycloudflare.com 以及用户自己的服务器地址
 - `dist/` — 构建输出，已加入 `.gitignore`
@@ -116,26 +117,30 @@ URL 参数：`?m1=1` 强制开启，`?m1=0` 关闭，`?renderscale=N` 调整分�
 - `?panel=0` 关闭面板和网络计数。内部状态在 `window.__eaglerPerfPanel`。
 - 自动调节在真实 M1 上还没实测过，只测过控制逻辑和在无头浏览器里的降档。
 
-## 自建服务器预设（未完成，未验证）
+## 自建服务器预设
 
 用户在家里的 Windows 电脑上跑了原版 26.2 服务端 + `kkudzu/relay`（私有模式，需要 token），
-用 Tailscale Funnel 得到固定地址。目标是让 HTML 打开后不用手动填 relay 和 token。
+用 Tailscale Funnel 得到固定地址，白名单已开。目标是 HTML 打开后不用手动填 relay 和 token。
 
-- `local/home-server.json`（已加入 `.gitignore`，**含 token，绝不能提交**）：
-  `{ "name", "relay": "wss://...", "token", "target": "127.0.0.1:25565" }`
+- `local/home-server.json`（已加入 `.gitignore`，**可能含 token，绝不能提交**），两种写法：
+  - 明文：`{ "name", "relay": "wss://...", "target": "127.0.0.1:25565", "token" }`
+  - 加密：把 `token` 换成 `"enc": { "v", "iter", "salt", "iv", "data" }`
+- `tools/encrypt-token.html`：独立页面，在用户自己的浏览器里用密码加密 token（PBKDF2-SHA256
+  60 万次 + AES-GCM），输出加密写法的 JSON。这样 token 和密码都不用经过对话
 - `build.py` 的 `@@EAG:json:<路径>@@` 占位符：文件存在就内联成 JSON，不存在就是 `null`。
   模板里用它给 `window.__eaglerHomeServer` 赋值
 - `02d-home-server.js`：启动前把这个 relay 写进 localStorage 的
   `_eaglercraftX.relay.list.v3`（base64 的 JSON 数组，字段 `name/address/private/token/
-  capability/detected`），放在第一位；游戏用第一个支持 multiplayer 的 relay 连 Java 服务端
+  capability/detected`），放在第一位；游戏用第一个支持 multiplayer 的 relay 连 Java 服务端。
+  加密写法下，第一次加入或测试时用 `prompt()` 问密码，解开后 token 只存在游戏自己的
+  relay 列表里（游戏本来就要把它存在那里），之后不再问；面板的 Lock 按钮把它删掉
 - 加入服务器用游戏自带的启动链接：`?server=<target>&transport=relay`；面板的 My server
   里有 Join 按钮会带着这两个参数刷新页面
 
-状态：以上格式来自较新的源码，在本仓库这个构建上**还没验证能连通**。无头测试里确认了
-relay 列表能写进去，但游戏首次启动停在 Edit Profile 界面，还没走到连接那一步就被用户
-叫停。用户自己手动填也连不上（带不带 token 都试过），原因待查，需要先看用户的报错和
-界面截图。注意：带了本地配置的构建产物里有 token，不要对它运行 `split.py`，也不要
-把它提交或公开。
+状态：relay 列表的格式来自较新的源码。用户说用明文写法的构建能连上自己的服务器，但我
+没有拿到报错或日志，也没有做过自动化的端到端验证。加密写法测过加密、解密、错误密码
+重试、解锁后免输入和 Lock。注意：带了明文配置的构建产物里有 token，不要对它运行
+`split.py`，也不要提交或公开；用户很在意 token 的安全，给文件时优先用加密写法。
 
 ## 排查记录：地形有碰撞但看不见
 

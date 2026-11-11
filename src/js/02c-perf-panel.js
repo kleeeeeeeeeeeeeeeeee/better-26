@@ -480,16 +480,21 @@
 		// through the game's startup link and tests that address by default.
 		var home = window.__eaglerHomeServer;
 		if (home) {
-			if (!load(SERVER_KEY)) {
-				save(SERVER_KEY, home.relay.replace(/\/+$/, "") + "/minecraft?target=" + encodeURIComponent(home.target)
-					+ (home.token ? "&token=" + encodeURIComponent(home.token) : ""));
-			}
 			var joinLine = el("div", "display:flex;gap:4px;margin-top:3px");
 			var joinButton = clickable(el("div", BUTTON_CSS, "Join " + (home.name || "home server")), function () {
 				window.__eaglerHomeServerJoin();
 			});
 			joinButton.title = "Reload the game and connect to " + (home.name || "the home server");
 			joinLine.appendChild(joinButton);
+			if (home.enc) {
+				// Remove the unlocked token from this browser, e.g. on a shared computer.
+				var lockButton = clickable(el("div", BUTTON_CSS + ";flex:0 0 auto", "Lock"), function () {
+					window.__eaglerHomeServerForget();
+					serverResult.textContent = "Token removed from this browser";
+				});
+				lockButton.title = "Forget the server token on this computer; the password is needed again next time";
+				joinLine.appendChild(lockButton);
+			}
 			body.appendChild(joinLine);
 		}
 		var serverLine = el("div", "display:flex;gap:4px;margin-top:3px");
@@ -503,7 +508,7 @@
 		serverLine.appendChild(clickable(el("div", BUTTON_CSS, "Test"), testServer));
 		body.appendChild(serverLine);
 		serverResult = el("div", "margin-top:3px;opacity:0.8;white-space:normal;word-break:break-word",
-			load(SERVER_KEY) ? "Address saved" : "No address set");
+			load(SERVER_KEY) ? "Address saved" : home ? "Using " + (home.name || "home server") : "No address set");
 		body.appendChild(serverResult);
 
 		root.appendChild(body);
@@ -546,7 +551,19 @@
 	// the native socket class so it is not counted as game traffic. The token is
 	// never displayed.
 	function testServer() {
-		var url = (load(SERVER_KEY) || "").replace(/^https:/i, "wss:").replace(/^http:/i, "ws:");
+		var home = window.__eaglerHomeServer;
+		if (!load(SERVER_KEY) && home && home.locked) {
+			// The preset's token is still encrypted: ask for the password first.
+			home.unlock().then(function (ok) {
+				if (ok) testServer(); else serverResult.textContent = "Password needed to test";
+			});
+			return;
+		}
+		// A saved address wins; otherwise test the preset. Its address is built on
+		// the spot so the token is not stored a second time.
+		var url = load(SERVER_KEY) || (home ? home.relay.replace(/\/+$/, "") + "/minecraft?target="
+			+ encodeURIComponent(home.target) + (home.token ? "&token=" + encodeURIComponent(home.token) : "") : "");
+		url = url.replace(/^https:/i, "wss:").replace(/^http:/i, "ws:");
 		if (!url) { serverResult.textContent = "Set an address first"; return; }
 		serverResult.textContent = "Testing...";
 		var started = performance.now(), done = false, opened = false, socket;
