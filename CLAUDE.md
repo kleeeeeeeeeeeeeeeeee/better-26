@@ -12,7 +12,7 @@ base64 数据块；为了便于阅读和修改代码，仓库里保存的是拆�
   - `02-inline-payload-loader.js` — 内联数据块的加载与 fetch 拦截
   - `02b-m1-air-profile.js` — 渲染分辨率控制与 MacBook Air M1 性能配置（后加的）
   - `02c-perf-panel.js` — 屏幕左上角的性能面板（后加的）
-  - `02d-home-server.js` — 自建服务器预设（后加的，见下文，尚未验证）
+  - `02d-home-server.js` — 自建服务器预设（后加的，见下文）
   - `03-debug-flags.js` — URL 调试参数与诊断开关
   - `04-teavm-wasmgc-runtime.js` — TeaVM Wasm-GC 运行时（已压缩）
   - `05-worker-bootstrap.js` — 页面与 worker 共用的 Wasm-GC 启动逻辑
@@ -96,7 +96,6 @@ URL 参数：`?m1=1` 强制开启，`?m1=0` 关闭，`?renderscale=N` 调整分�
   `eaglercraft-log-<时间>.txt`，内容是每半秒一行的采样（帧率、网格管线计数、网速等）、
   录制首尾的 `__meshWorkerPool` 完整快照，以及这段时间里游戏写进 `window.__log` 的日志。
   用户打不开 F12，排查问题时让用户录一段发过来
-- My server：保存用户自己服务器的完整连接地址，一键测试是否可达
 
 实现要点：
 
@@ -113,9 +112,16 @@ URL 参数：`?m1=1` 强制开启，`?m1=0` 关闭，`?renderscale=N` 调整分�
 - 页面的 `<meta charset>` 在 75MB 之后才出现，新增的 JS 只用 ASCII 字符，界面文字用英文。
 - 游戏全屏的是 `#game_frame`，面板在全屏时会被移进去，否则看不到。
 - 按钮用 `<div>` 而不是 `<button>`，滑块 `tabIndex=-1` 且用完立刻 `blur()`，避免获得键盘
-  焦点后被游戏里的按键触发。地址输入用 `prompt()`，同样是为了不和游戏抢键盘。
+  焦点后被游戏里的按键触发。
 - `?panel=0` 关闭面板和网络计数。内部状态在 `window.__eaglerPerfPanel`。
 - 自动调节在真实 M1 上还没实测过，只测过控制逻辑和在无头浏览器里的降档。
+
+## 和用户协作的约定
+
+- 用户说要删某个功能时直接删，不用先确认。
+- 用户很在意 relay token 的安全：不要把 token 写进任何会提交的文件，给文件时优先用
+  加密写法。
+- 用户打不开 F12，需要看运行情况时让用户用面板的 Record log 录一段发过来。
 
 ## 自建服务器预设
 
@@ -133,13 +139,16 @@ URL 参数：`?m1=1` 强制开启，`?m1=0` 关闭，`?renderscale=N` 调整分�
   `_eaglercraftX.relay.list.v3`（base64 的 JSON 数组，字段 `name/address/private/token/
   capability/detected`），放在第一位；游戏用第一个支持 multiplayer 的 relay 连 Java 服务端。
   加密写法下，第一次加入或测试时用 `prompt()` 问密码，解开后 token 只存在游戏自己的
-  relay 列表里（游戏本来就要把它存在那里），之后不再问；面板的 Lock 按钮把它删掉
-- 加入服务器用游戏自带的启动链接：`?server=<target>&transport=relay`；面板的 My server
-  里有 Join 按钮会带着这两个参数刷新页面
+  relay 列表里（游戏本来就要把它存在那里），之后不再问
+- 加入服务器用游戏自带的启动链接：在地址末尾加 `?server=<target>&transport=relay`。
+  带这两个参数打开时，加密写法会先问密码
+- 面板里原来有 My server 一栏（Join、Set address、Test、Lock），用户要求删掉了，不要再加
+  回来。旧版本存在 localStorage `eaglercraft26.perfPanel.server` 里的地址（含 token）会在
+  启动时被清除。要让浏览器忘掉已解锁的 token，可调用 `window.__eaglerHomeServerForget()`
 
 状态：relay 列表的格式来自较新的源码。用户说用明文写法的构建能连上自己的服务器，但我
 没有拿到报错或日志，也没有做过自动化的端到端验证。加密写法测过加密、解密、错误密码
-重试、解锁后免输入和 Lock。注意：带了明文配置的构建产物里有 token，不要对它运行
+重试和解锁后免输入。注意：带了明文配置的构建产物里有 token，不要对它运行
 `split.py`，也不要提交或公开；用户很在意 token 的安全，给文件时优先用加密写法。
 
 ## 排查记录：地形有碰撞但看不见

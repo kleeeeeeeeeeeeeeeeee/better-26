@@ -14,7 +14,6 @@
  *   - a fullscreen button
  *   - a log recorder that samples everything above for 60 seconds (or until
  *     stopped) and downloads the result as a text file
- *   - a reachability check for the player's own server address
  * Free the mouse with Esc first when in a world.
  *
  * ?panel=0 removes the panel (and its network counters) for this visit.
@@ -26,7 +25,8 @@
 	var KEY = "eaglercraft26.perfPanel";
 	var POS_KEY = "eaglercraft26.perfPanel.pos";
 	var AUTO_KEY = "eaglercraft26.perfPanel.autoScale";
-	var SERVER_KEY = "eaglercraft26.perfPanel.server";
+	// Earlier versions kept a server address, token included, under this key.
+	try { localStorage.removeItem("eaglercraft26.perfPanel.server"); } catch (e) {}
 	var startedAt = Date.now();
 
 	function load(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
@@ -279,7 +279,7 @@
 	var BUTTON_CSS = "flex:1;text-align:center;padding:3px 6px;border-radius:3px;"
 		+ "border:1px solid rgba(255,255,255,0.35);white-space:nowrap";
 
-	var root, pill, body, graph, rows = {}, slider, scaleLabel, autoButton, serverResult;
+	var root, pill, body, graph, rows = {}, slider, scaleLabel, autoButton;
 	var open = load(KEY) === "open";
 	var autoOn = load(AUTO_KEY) === "on";
 	var scale = null;      // window.__eaglerRenderScale, when usable
@@ -475,42 +475,6 @@
 		buttons.appendChild(recordButton);
 		body.appendChild(buttons);
 
-		section("My server");
-		// A build with a home server preset (see 02d-home-server.js) can join it
-		// through the game's startup link and tests that address by default.
-		var home = window.__eaglerHomeServer;
-		if (home) {
-			var joinLine = el("div", "display:flex;gap:4px;margin-top:3px");
-			var joinButton = clickable(el("div", BUTTON_CSS, "Join " + (home.name || "home server")), function () {
-				window.__eaglerHomeServerJoin();
-			});
-			joinButton.title = "Reload the game and connect to " + (home.name || "the home server");
-			joinLine.appendChild(joinButton);
-			if (home.enc) {
-				// Remove the unlocked token from this browser, e.g. on a shared computer.
-				var lockButton = clickable(el("div", BUTTON_CSS + ";flex:0 0 auto", "Lock"), function () {
-					window.__eaglerHomeServerForget();
-					serverResult.textContent = "Token removed from this browser";
-				});
-				lockButton.title = "Forget the server token on this computer; the password is needed again next time";
-				joinLine.appendChild(lockButton);
-			}
-			body.appendChild(joinLine);
-		}
-		var serverLine = el("div", "display:flex;gap:4px;margin-top:3px");
-		serverLine.appendChild(clickable(el("div", BUTTON_CSS, "Set address"), function () {
-			var value = window.prompt("Full connection address of your server, for example\n"
-				+ "wss://example.com/minecraft?target=127.0.0.1:25565&token=...", load(SERVER_KEY) || "");
-			if (value === null) return;
-			save(SERVER_KEY, value.trim());
-			serverResult.textContent = value.trim() ? "Address saved" : "No address set";
-		}));
-		serverLine.appendChild(clickable(el("div", BUTTON_CSS, "Test"), testServer));
-		body.appendChild(serverLine);
-		serverResult = el("div", "margin-top:3px;opacity:0.8;white-space:normal;word-break:break-word",
-			load(SERVER_KEY) ? "Address saved" : home ? "Using " + (home.name || "home server") : "No address set");
-		body.appendChild(serverResult);
-
 		root.appendChild(body);
 
 		// Keep clicks on the panel away from the game's own handlers.
@@ -545,45 +509,6 @@
 			}).catch(function () {});
 		}
 		fit();
-	}
-
-	// Reachability of the player's own server, through a short-lived connection on
-	// the native socket class so it is not counted as game traffic. The token is
-	// never displayed.
-	function testServer() {
-		var home = window.__eaglerHomeServer;
-		if (!load(SERVER_KEY) && home && home.locked) {
-			// The preset's token is still encrypted: ask for the password first.
-			home.unlock().then(function (ok) {
-				if (ok) testServer(); else serverResult.textContent = "Password needed to test";
-			});
-			return;
-		}
-		// A saved address wins; otherwise test the preset. Its address is built on
-		// the spot so the token is not stored a second time.
-		var url = load(SERVER_KEY) || (home ? home.relay.replace(/\/+$/, "") + "/minecraft?target="
-			+ encodeURIComponent(home.target) + (home.token ? "&token=" + encodeURIComponent(home.token) : "") : "");
-		url = url.replace(/^https:/i, "wss:").replace(/^http:/i, "ws:");
-		if (!url) { serverResult.textContent = "Set an address first"; return; }
-		serverResult.textContent = "Testing...";
-		var started = performance.now(), done = false, opened = false, socket;
-		function finish(text) {
-			if (done) return;
-			done = true;
-			clearTimeout(timer);
-			try { socket.close(); } catch (e) {}
-			serverResult.textContent = text;
-		}
-		var timer = setTimeout(function () { finish("No answer after 12 s"); }, 12000);
-		try { socket = new NativeWS(url); } catch (e) { finish("Invalid address"); return; }
-		socket.onopen = function () {
-			opened = true;
-			finish("Reachable, " + Math.round(performance.now() - started) + " ms");
-		};
-		socket.onclose = function (ev) {
-			finish(opened ? "Reachable" : "Not reachable (code " + ev.code
-				+ "): blocked, server off, or wrong address/token");
-		};
 	}
 
 	// ------------------------------------------------------------ measurement
