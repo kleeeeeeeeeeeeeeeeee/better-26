@@ -12,6 +12,7 @@ base64 数据块；为了便于阅读和修改代码，仓库里保存的是拆�
   - `02-inline-payload-loader.js` — 内联数据块的加载与 fetch 拦截
   - `02b-m1-air-profile.js` — 渲染分辨率控制与 MacBook Air M1 性能配置（后加的）
   - `02c-perf-panel.js` — 屏幕左上角的性能面板（后加的）
+  - `02d-home-server.js` — 自建服务器预设（后加的，见下文，尚未验证）
   - `03-debug-flags.js` — URL 调试参数与诊断开关
   - `04-teavm-wasmgc-runtime.js` — TeaVM Wasm-GC 运行时（已压缩）
   - `05-worker-bootstrap.js` — 页面与 worker 共用的 Wasm-GC 启动逻辑
@@ -114,6 +115,27 @@ URL 参数：`?m1=1` 强制开启，`?m1=0` 关闭，`?renderscale=N` 调整分�
   焦点后被游戏里的按键触发。地址输入用 `prompt()`，同样是为了不和游戏抢键盘。
 - `?panel=0` 关闭面板和网络计数。内部状态在 `window.__eaglerPerfPanel`。
 - 自动调节在真实 M1 上还没实测过，只测过控制逻辑和在无头浏览器里的降档。
+
+## 自建服务器预设（未完成，未验证）
+
+用户在家里的 Windows 电脑上跑了原版 26.2 服务端 + `kkudzu/relay`（私有模式，需要 token），
+用 Tailscale Funnel 得到固定地址。目标是让 HTML 打开后不用手动填 relay 和 token。
+
+- `local/home-server.json`（已加入 `.gitignore`，**含 token，绝不能提交**）：
+  `{ "name", "relay": "wss://...", "token", "target": "127.0.0.1:25565" }`
+- `build.py` 的 `@@EAG:json:<路径>@@` 占位符：文件存在就内联成 JSON，不存在就是 `null`。
+  模板里用它给 `window.__eaglerHomeServer` 赋值
+- `02d-home-server.js`：启动前把这个 relay 写进 localStorage 的
+  `_eaglercraftX.relay.list.v3`（base64 的 JSON 数组，字段 `name/address/private/token/
+  capability/detected`），放在第一位；游戏用第一个支持 multiplayer 的 relay 连 Java 服务端
+- 加入服务器用游戏自带的启动链接：`?server=<target>&transport=relay`；面板的 My server
+  里有 Join 按钮会带着这两个参数刷新页面
+
+状态：以上格式来自较新的源码，在本仓库这个构建上**还没验证能连通**。无头测试里确认了
+relay 列表能写进去，但游戏首次启动停在 Edit Profile 界面，还没走到连接那一步就被用户
+叫停。用户自己手动填也连不上（带不带 token 都试过），原因待查，需要先看用户的报错和
+界面截图。注意：带了本地配置的构建产物里有 token，不要对它运行 `split.py`，也不要
+把它提交或公开。
 
 ## 排查记录：地形有碰撞但看不见
 

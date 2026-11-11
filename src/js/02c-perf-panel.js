@@ -476,6 +476,22 @@
 		body.appendChild(buttons);
 
 		section("My server");
+		// A build with a home server preset (see 02d-home-server.js) can join it
+		// through the game's startup link and tests that address by default.
+		var home = window.__eaglerHomeServer;
+		if (home) {
+			if (!load(SERVER_KEY)) {
+				save(SERVER_KEY, home.relay.replace(/\/+$/, "") + "/minecraft?target=" + encodeURIComponent(home.target)
+					+ (home.token ? "&token=" + encodeURIComponent(home.token) : ""));
+			}
+			var joinLine = el("div", "display:flex;gap:4px;margin-top:3px");
+			var joinButton = clickable(el("div", BUTTON_CSS, "Join " + (home.name || "home server")), function () {
+				window.__eaglerHomeServerJoin();
+			});
+			joinButton.title = "Reload the game and connect to " + (home.name || "the home server");
+			joinLine.appendChild(joinButton);
+			body.appendChild(joinLine);
+		}
 		var serverLine = el("div", "display:flex;gap:4px;margin-top:3px");
 		serverLine.appendChild(clickable(el("div", BUTTON_CSS, "Set address"), function () {
 			var value = window.prompt("Full connection address of your server, for example\n"
