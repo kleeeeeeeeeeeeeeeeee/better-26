@@ -9,7 +9,8 @@
  *   - counters of the chunk meshing pipeline (workers, queue, errors)
  *   - a render scale slider and an automatic mode that lowers the scale while
  *     the frame rate is low and raises it again once it has been steady
- *   - network traffic of the game's WebSocket and WebRTC connections
+ *   - network traffic of the game's WebSocket and WebRTC connections, with a
+ *     red NO DATA warning when nothing has arrived for 5 seconds
  *   - battery level and play time
  *   - a fullscreen button
  *   - a log recorder that samples everything above for 60 seconds (or until
@@ -38,7 +39,7 @@
 	// ------------------------------------------------------------ network meter
 	// Count bytes on the game's own connections. The wrappers extend the native
 	// classes, so instanceof checks, constants and prototypes keep working.
-	var net = { up: 0, down: 0, open: 0, host: "", connectMs: 0, upRate: 0, downRate: 0 };
+	var net = { up: 0, down: 0, open: 0, host: "", connectMs: 0, upRate: 0, downRate: 0, lastDown: 0 };
 	var liveSockets = [];
 	// Judge by readyState rather than waiting for close events, which can lag
 	// far behind when the other side is slow to finish the closing handshake.
@@ -70,10 +71,10 @@
 							var host = "";
 							try { host = new URL(String(url), location.href).host; } catch (e) {}
 							socket.addEventListener("open", function () {
-								liveSockets.push({ socket: socket, host: host,
+								net.lastDown = performance.now(); liveSockets.push({ socket: socket, host: host,
 									connectMs: Math.round(performance.now() - created) });
 							});
-							socket.addEventListener("message", function (ev) { net.down += sizeOf(ev.data); });
+							socket.addEventListener("message", function (ev) { net.down += sizeOf(ev.data); net.lastDown = performance.now(); });
 						} catch (e) {}
 					}
 					send(data) {
@@ -98,7 +99,7 @@
 			if (typeof NativePC === "function") {
 				var watch = function (channel) {
 					try {
-						channel.addEventListener("message", function (ev) { net.down += sizeOf(ev.data); });
+						channel.addEventListener("message", function (ev) { net.down += sizeOf(ev.data); net.lastDown = performance.now(); });
 					} catch (e) {}
 				};
 				window.RTCPeerConnection = class RTCPeerConnection extends NativePC {
@@ -176,7 +177,7 @@
 	var recordButton = null;
 	var COLUMNS = ["t", "fps", "worstMs", "gameMs", "gameP95", "canvas", "scale", "ready", "spawned", "desired",
 		"queuedSections", "queuedResults", "inFlight", "dispatcherInFlight", "jobs", "completed", "inline",
-		"errors", "cancelled", "shrinks", "heapPressure", "downKBs", "upKBs"];
+		"errors", "cancelled", "shrinks", "heapPressure", "downKBs", "upKBs", "silentS"];
 
 	function recordSample() {
 		if (!recording) return;
@@ -190,7 +191,7 @@
 			n(pool.ready), n(pool.spawned), n(pool.desiredWorkers), n(pool.queuedSections), n(pool.queuedResults),
 			n(pool.inFlight), n(pool.dispatcherInFlight), n(pool.jobs), n(pool.completedJobs), n(pool.inline),
 			n(pool.errors), n(pool.cancelledJobs), n(pool.shrinks), n(pool.heapPressure, 3),
-			n(net.downRate / 1024, 1), n(net.upRate / 1024, 1)
+			n(net.downRate / 1024, 1), n(net.upRate / 1024, 1), n(silentSeconds(), 1)
 		].join("\t"));
 	}
 
@@ -606,16 +607,26 @@
 		g.fillRect(0, Math.round(line), w, 1);
 	}
 
+	// Seconds since anything last arrived on the game's connection, 0 when there
+	// is no connection. A live server sends something every second (the time
+	// update), so several silent seconds mean the connection is stuck.
+	function silentSeconds() {
+		refreshConnections();
+		return net.open > 0 && net.lastDown ? (performance.now() - net.lastDown) / 1000 : 0;
+	}
+
 	function update() {
 		if (!root) return;
 		var rounded = Math.round(fps);
+		var silent = silentSeconds();
 		var left = recording ? Math.max(0, Math.ceil((RECORD_MS - (Date.now() - recording.startedAt)) / 1000)) : 0;
-		pill.textContent = (fps ? rounded : "--") + " FPS" + (recording ? "  REC " + left + "s" : "");
+		pill.textContent = (fps ? rounded : "--") + " FPS" + (silent >= 5 ? "  NO DATA " + Math.floor(silent) + "s" : "")
+			+ (recording ? "  REC " + left + "s" : "");
 		if (recordButton) {
 			recordButton.textContent = recording ? "Stop (" + left + "s)" : "Record log";
 			recordButton.style.background = recording ? "rgba(255,90,90,0.45)" : "transparent";
 		}
-		pill.style.color = !fps ? "#fff" : rounded >= refresh * 0.83 ? "#7CFC7C"
+		pill.style.color = silent >= 5 ? "#FF7A7A" : !fps ? "#fff" : rounded >= refresh * 0.83 ? "#7CFC7C"
 			: rounded >= refresh * 0.5 ? "#FFD95A" : "#FF7A7A";
 		if (!open) return;
 
@@ -668,8 +679,10 @@
 		rows.up.textContent = rate(net.upRate) + " (" + amount(net.up) + ")";
 		rows.conn.textContent = net.open > 0
 			? (net.host.length > 22 ? net.host.slice(0, 21) + "..." : net.host) + " " + net.connectMs + " ms"
+				+ (silent >= 5 ? ", silent " + Math.floor(silent) + "s" : "")
 			: "none";
 		rows.conn.title = net.open > 0 ? net.host + ", connected in " + net.connectMs + " ms" : "";
+		rows.conn.style.color = silent >= 5 ? "#FF7A7A" : "";
 
 		rows.time.textContent = duration(Date.now() - startedAt);
 	}
