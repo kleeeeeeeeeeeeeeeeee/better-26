@@ -129,7 +129,7 @@ URL 参数：`?m1=1` 强制开启，`?m1=0` 关闭，`?renderscale=N` 调整分�
 一直是 Control。`02e-mac-shortcuts.js` 在 Mac 上截获 Command+A/C/V/X，改成 Control 版本
 的 keydown 加 keyup 再交给游戏（macOS 按住 Command 时浏览器不发字母键的 keyup，所以补
 一个），并沿用游戏对 Control 版本的 `preventDefault` 结果，避免浏览器自己再粘贴一次。
-伪装 Mac 的无头测试里全选、复制、粘贴都通过；真 Mac 上还没测。粘贴要读系统剪贴板，Chrome
+伪装 Mac 的无头测试里全选、复制、粘贴都通过；用户在真 Mac 上确认可用（2026-11-13）。粘贴要读系统剪贴板，Chrome
 第一次会弹出“要查看剪贴板”的权限提示，拒绝的话游戏会退回成弹一个输入框让用户手动粘贴。
 所有构建（包括 `"panel": false` 的）都带这个脚本。
 
