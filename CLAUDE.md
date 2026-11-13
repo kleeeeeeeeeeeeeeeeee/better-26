@@ -7,12 +7,13 @@ base64 数据块；为了便于阅读和修改代码，仓库里保存的是拆�
 ## 目录结构
 
 - `src/index.template.html` — HTML 骨架，被拆出去的内容在原位置换成占位符
-- `src/js/` — 8 段内联脚本，按在页面中出现的顺序编号
+- `src/js/` — 9 段内联脚本，按在页面中出现的顺序编号
   - `01-brotli-decoder.js` — Brotli 解码器（已压缩，不可读）
   - `02-inline-payload-loader.js` — 内联数据块的加载与 fetch 拦截
   - `02b-m1-air-profile.js` — 渲染分辨率控制与 MacBook Air M1 性能配置（后加的）
   - `02c-perf-panel.js` — 屏幕左上角的性能面板（后加的）
   - `02d-home-server.js` — 自建服务器预设（后加的，见下文）
+  - `02e-mac-shortcuts.js` — Mac 上把 Command+A/C/V/X 转成 Control 版本（后加的）
   - `03-debug-flags.js` — URL 调试参数与诊断开关
   - `04-teavm-wasmgc-runtime.js` — TeaVM Wasm-GC 运行时（已压缩）
   - `05-worker-bootstrap.js` — 页面与 worker 共用的 Wasm-GC 启动逻辑
@@ -118,6 +119,19 @@ URL 参数：`?m1=1` 强制开启，`?m1=0` 关闭，`?renderscale=N` 调整分�
   焦点后被游戏里的按键触发。
 - `?panel=0` 关闭面板和网络计数。内部状态在 `window.__eaglerPerfPanel`。
 - 自动调节在真实 M1 上还没实测过，只测过控制逻辑和在无头浏览器里的降档。
+
+## Mac 上 Command+A/C/V/X 不起作用
+
+用户在 Mac 上全选、复制、粘贴都没反应，Windows 上正常。用无头 Chromium 伪装成 Mac 对比
+了原版 HTML 和我们的构建：两者一样，Command+A 不起作用，Control+A 起作用，所以不是
+面板或其他改动造成的。原因是游戏用 `System.getProperty("os.name")` 判断是不是 macOS
+（`InputQuirks.REPLACE_CTRL_KEY_WITH_CMD_KEY`），这个构建里它没有判成 Mac，于是快捷键
+一直是 Control。`02e-mac-shortcuts.js` 在 Mac 上截获 Command+A/C/V/X，改成 Control 版本
+的 keydown 加 keyup 再交给游戏（macOS 按住 Command 时浏览器不发字母键的 keyup，所以补
+一个），并沿用游戏对 Control 版本的 `preventDefault` 结果，避免浏览器自己再粘贴一次。
+伪装 Mac 的无头测试里全选、复制、粘贴都通过；真 Mac 上还没测。粘贴要读系统剪贴板，Chrome
+第一次会弹出“要查看剪贴板”的权限提示，拒绝的话游戏会退回成弹一个输入框让用户手动粘贴。
+所有构建（包括 `"panel": false` 的）都带这个脚本。
 
 ## 和用户协作的约定
 
