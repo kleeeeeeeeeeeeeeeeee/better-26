@@ -449,7 +449,9 @@
 			body.appendChild(autoLine);
 
 			auto = createAuto({
-				floor: 1,
+				// On a screen at ratio 1 the scale is already 1x, so the automatic mode needs
+				// room below it; on a high-density screen 1x is the floor.
+				floor: nativeRatio() <= 1.001 ? 0.75 : 1,
 				ceiling: chosenScale,
 				apply: function (value) { applyScale(value, true); }
 			});
@@ -552,9 +554,9 @@
 				// Displays faster than 60 Hz: learn the refresh rate from sustained readings.
 				if (fps > refresh * 1.15) {
 					if (++fastWindows >= 3) {
-						refresh = [75, 90, 120, 144, 165, 240].reduce(function (best, hz) {
+						refresh = [75, 90, 100, 120, 144, 165, 180, 240, 360].reduce(function (best, hz) {
 							return Math.abs(hz - fps) < Math.abs(best - fps) ? hz : best;
-						}, 240);
+						}, 360);
 						fastWindows = 0;
 					}
 				} else {

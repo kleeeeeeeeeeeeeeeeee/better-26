@@ -95,6 +95,8 @@ Intel UHD/Iris/HD/Xe 时命中（浏览器读不到 CPU 型号，所以只能这
 - 把 `navigator.hardwareConcurrency` 报告为 4，mesh worker 上限 2（这台机器同时跑着 Paper
   服务端、relay、隧道，少占一点 CPU；这是推断，没有对比测过）
 - 面板的 Auto 清晰度默认开（没有保存过选择时）
+  （Auto 的下限：屏幕缩放比为 1 时是 0.75，高密度屏是 1。用户在 1080p 100% 的屏幕上实测
+  命中配置后画面显示 `now 1x`，原来下限是 1，Auto 在这种屏幕上什么都做不了，所以改了）
 - 带面板的版本启动时顶部显示 18 秒的横幅，写明用的是哪块 GPU，并提示“如果这台笔电还有
   NVIDIA 独显，去 Windows 设置 → 系统 → 屏幕 → 图形里把 Chrome 设成高性能，重启 Chrome”
 
