@@ -5,7 +5,7 @@
  * A small pill shows the frame rate; drag it to move it, click it to open the
  * panel. The panel has:
  *   - a 30 second frame time graph
- *   - frame time, canvas resolution and M1 profile state
+ *   - frame time, canvas resolution, GPU in use and device profile state
  *   - counters of the chunk meshing pipeline (workers, queue, errors)
  *   - a render scale slider and an automatic mode that lowers the scale while
  *     the frame rate is low and raises it again once it has been steady
@@ -240,7 +240,8 @@
 			"screen: " + screen.width + "x" + screen.height + ", native pixel ratio " + nativeRatio()
 				+ ", window " + window.innerWidth + "x" + window.innerHeight,
 			"cores reported: " + navigator.hardwareConcurrency + ", device memory: " + (navigator.deviceMemory || "?"),
-			"M1 profile: " + (profile.active ? "on" : "off") + ", GPU: " + (profile.renderer || "?"),
+			"device profile: " + (profile.active ? (profile.kind === "pc" ? "Intel PC" : "M1 Air") : "off")
+				+ ", GPU: " + (profile.gpu || profile.renderer || "?"),
 			"render scale: chosen " + (scale ? (scale.get() === null ? "native" : scale.get()) : "n/a")
 				+ ", auto " + (autoOn ? "on" : "off"),
 			"refresh rate estimate: " + refresh,
@@ -285,7 +286,10 @@
 
 	var root, pill, body, graph, rows = {}, slider, scaleLabel, autoButton;
 	var open = load(KEY) === "open";
-	var autoOn = load(AUTO_KEY) === "on";
+	var storedAuto = load(AUTO_KEY);
+	var deviceProfile = window.__eaglerM1Profile || {};
+	// Without a saved choice, a device profile can start with the automatic scale on.
+	var autoOn = storedAuto === null ? !!deviceProfile.defaultAuto : storedAuto === "on";
 	var scale = null;      // window.__eaglerRenderScale, when usable
 	var auto = null;
 	var history = [];      // {fps, worst} per window, newest last
@@ -393,7 +397,8 @@
 		row("frame", "Worst frame");
 		row("game", "Game frame");
 		row("res", "Resolution");
-		row("m1", "M1 profile");
+		row("gpu", "GPU");
+		row("m1", "Profile");
 
 		// Chunk meshing pipeline, for diagnosing terrain that stays invisible.
 		section("Chunk meshing");
@@ -662,7 +667,14 @@
 		}
 
 		var profile = window.__eaglerM1Profile;
-		rows.m1.textContent = profile && profile.active ? "on" : "off";
+		rows.m1.textContent = profile && profile.active ? (profile.kind === "pc" ? "Intel PC" : "M1 Air") : "off";
+		var gpuName = profile && profile.gpu ? (window.__eaglerShortGpu ? window.__eaglerShortGpu(profile.gpu) : profile.gpu) : "";
+		rows.gpuLine.style.display = gpuName ? "flex" : "none";
+		rows.gpu.textContent = gpuName + (profile && profile.integratedGpu ? " (integrated)" : "");
+		rows.gpu.style.color = profile && profile.integratedGpu ? "#FFD95A" : "";
+		rows.gpu.title = profile && profile.gpu ? profile.gpu
+			+ (profile.integratedGpu ? "\nIf this laptop also has a dedicated GPU, set Chrome to High performance in"
+				+ " Windows Settings > System > Display > Graphics." : "") : "";
 
 		if (scale) {
 			var chosen = chosenScale();

@@ -1,6 +1,7 @@
 
 /*
- * Render scale control and MacBook Air M1 performance profile.
+ * Render scale control and device performance profiles (MacBook Air M1 and an
+ * Intel laptop with an integrated GPU).
  *
  * The game reads two browser properties to size itself, both once per frame or
  * at startup, so they can be tuned here without rebuilding the Wasm image:
@@ -35,6 +36,7 @@
 	var SCALE_KEY = "eaglercraft26.renderScale";
 	var params = new URLSearchParams(window.location.search);
 	var forced = params.get("m1");
+	var forcedPC = params.get("pc");
 
 	function gpuRenderer() {
 		try {
@@ -57,10 +59,13 @@
 		return modes[screen.width + "x" + screen.height] === 1 && window.devicePixelRatio >= 2;
 	}
 
+	// The GPU the browser actually uses; also shown in the panel and in recorded logs.
+	var gpu = gpuRenderer();
+
 	function detect() {
 		var isMac = /Mac/.test(navigator.platform || "") && !(navigator.maxTouchPoints > 1);
 		if (!isMac) return { match: false, renderer: "", mac: false };
-		var renderer = gpuRenderer();
+		var renderer = gpu;
 		// Chrome and Firefox name the chip; Safari only reports "Apple GPU".
 		var named = /Apple M1(?!\s*(Pro|Max|Ultra))/.test(renderer);
 		var masked = /^Apple GPU$/.test(renderer) && (navigator.hardwareConcurrency | 0) === 8 && isAirPanel();
@@ -70,8 +75,21 @@
 	var detected = forced === "1" ? { match: true, renderer: "forced", mac: true }
 		: forced === "0" ? { match: false, renderer: "disabled", mac: true } : detect();
 
+	// "ANGLE (Intel, Intel(R) UHD Graphics (0x00004628) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+	// -> "Intel(R) UHD Graphics"
+	function shortGpu(name) {
+		var text = String(name || "").replace(/^ANGLE \(/, "").replace(/\)$/, "");
+		var parts = text.split(", ");
+		var model = parts.length > 1 ? parts[1] : parts[0];
+		var metal = /Metal Renderer: (.+)$/.exec(model);
+		if (metal) return metal[1];
+		return model.replace(/ \(0x[0-9a-fA-F]+\).*$/, "").replace(/ Direct3D.*$| Metal.*$| Vulkan.*$| OpenGL.*$/, "")
+			.replace(/^Intel, /, "") || "unknown";
+	}
+	window.__eaglerShortGpu = shortGpu;
+
 	// On-screen status, for browsers where the developer console is unavailable.
-	function banner(text) {
+	function banner(text, seconds) {
 		// A build made with "panel": false in its local configuration shows no
 		// status interface at all.
 		if (window.__eaglerHomeServer && window.__eaglerHomeServer.panel === false) return;
@@ -85,17 +103,33 @@
 					+ "background:rgba(0,0,0,0.8);color:#fff;font:13px/1.4 sans-serif;"
 					+ "text-align:center;pointer-events:none;transition:opacity 600ms linear";
 				document.body.appendChild(el);
-				setTimeout(function () { el.style.opacity = "0"; }, 9000);
-				setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 10000);
+				var ms = (seconds || 10) * 1000;
+				setTimeout(function () { el.style.opacity = "0"; }, ms - 1000);
+				setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, ms);
 			} catch (e) {}
 		}
 		if (document.body) show();
 		else document.addEventListener("DOMContentLoaded", show, { once: true });
 	}
 
+	// Intel laptop with an integrated GPU, 12 logical processors (the user's MSI with an
+	// i5-13420H). A browser cannot read the CPU model, so this goes by system, thread
+	// count and GPU. If Chrome is using a dedicated GPU instead, this does not match.
+	var intelIntegrated = /Intel/i.test(gpu) && /UHD|Iris|HD Graphics|Xe/i.test(gpu);
+	function detectPC() {
+		return /Win/.test(navigator.platform || "") && (navigator.hardwareConcurrency | 0) === 12 && intelIntegrated;
+	}
+	var pcActive = !detected.match
+		&& (forcedPC === "1" ? true : forcedPC === "0" ? false : detectPC());
+
 	var profile = window.__eaglerM1Profile = {
-		active: detected.match,
-		renderer: detected.renderer,
+		active: detected.match || pcActive,
+		kind: detected.match ? "m1" : pcActive ? "pc" : null,
+		// The panel turns its automatic render scale on by default for this profile.
+		defaultAuto: pcActive,
+		gpu: gpu,
+		integratedGpu: intelIntegrated,
+		renderer: detected.renderer || gpu,
 		renderScale: null,
 		nativePixelRatio: window.devicePixelRatio || 1,
 		reportedCores: navigator.hardwareConcurrency | 0
@@ -119,8 +153,11 @@
 			chosen = true;
 		}
 	}
-	// Only the M1 Air gets a default cap; a stored "native" choice is respected.
+	// Only the profiled machines get a default cap; a stored "native" choice is respected.
+	// The Intel laptop's screen is usually at ratio 1, where a cap of 1 changes nothing
+	// but keeps a higher Windows display scaling from multiplying the pixel count.
 	if (!chosen && detected.match) cap = 1.5;
+	else if (!chosen && pcActive) cap = 1;
 
 	var dprDesc = Object.getOwnPropertyDescriptor(window, "devicePixelRatio");
 	if (!dprDesc && window.Window) {
@@ -188,7 +225,7 @@
 		}
 	};
 
-	if (!detected.match) {
+	if (!detected.match && !pcActive) {
 		if (detected.mac) {
 			banner(forced === "0" ? "M1 profile: OFF (?m1=0)"
 				: "M1 profile: OFF - this Mac was not detected as an M1 Air (GPU: "
@@ -207,13 +244,21 @@
 		profile.reportedCores = 4;
 	} catch (e) {}
 
-	banner("M1 profile: ON - render scale " + (profile.renderScale === null ? "native" : profile.renderScale)
-		+ " (screen is " + profile.nativePixelRatio + "x), "
-		+ (/[?&]meshworkers=[1-4](?:&|$)/.test(window.location.search)
-			? "mesh workers set by ?meshworkers" : "mesh workers max 2")
-		+ (forced === "1" ? " (forced by ?m1=1)" : ""));
+	var workersText = /[?&]meshworkers=[1-4](?:&|$)/.test(window.location.search)
+		? "mesh workers set by ?meshworkers" : "mesh workers max 2";
+	if (pcActive) {
+		banner("PC profile: ON - GPU " + shortGpu(gpu) + (intelIntegrated ? " (integrated)" : "")
+			+ ", render scale cap " + (profile.renderScale === null ? "none" : profile.renderScale) + ", " + workersText
+			+ (forcedPC === "1" ? " (forced by ?pc=1)" : "")
+			+ (intelIntegrated ? ". If this laptop also has an NVIDIA graphics chip, set Chrome to High performance"
+				+ " in Windows Settings > System > Display > Graphics, then restart Chrome." : ""), 18);
+	} else {
+		banner("M1 profile: ON - render scale " + (profile.renderScale === null ? "native" : profile.renderScale)
+			+ " (screen is " + profile.nativePixelRatio + "x), " + workersText
+			+ (forced === "1" ? " (forced by ?m1=1)" : ""));
+	}
 	try {
-		console.log("[shell] MacBook Air M1 profile active: render scale " + profile.renderScale
+		console.log("[shell] " + (pcActive ? "Intel PC" : "MacBook Air M1") + " profile active: render scale " + profile.renderScale
 			+ " (native " + profile.nativePixelRatio + "), cores reported as " + profile.reportedCores
 			+ ", GPU " + profile.renderer);
 	} catch (e) {}

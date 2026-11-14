@@ -10,7 +10,7 @@ base64 数据块；为了便于阅读和修改代码，仓库里保存的是拆�
 - `src/js/` — 9 段内联脚本，按在页面中出现的顺序编号
   - `01-brotli-decoder.js` — Brotli 解码器（已压缩，不可读）
   - `02-inline-payload-loader.js` — 内联数据块的加载与 fetch 拦截
-  - `02b-m1-air-profile.js` — 渲染分辨率控制与 MacBook Air M1 性能配置（后加的）
+  - `02b-m1-air-profile.js` — 渲染分辨率控制，以及 MacBook Air M1 和 Intel 核显笔电两套性能配置（后加的）
   - `02c-perf-panel.js` — 屏幕左上角的性能面板（后加的）
   - `02d-home-server.js` — 自建服务器预设（后加的，见下文）
   - `02e-mac-shortcuts.js` — Mac 上把 Command+A/C/V/X 转成 Control 版本（后加的）
@@ -79,6 +79,29 @@ URL 参数：`?m1=1` 强制开启，`?m1=0` 关闭，`?renderscale=N` 调整分�
 像素填充。mesh worker 上限也让用户对比过（加入同一个 LAN world，
 上限 4 对上限 2，清晰度都是 1.5x）：两者都在 2–3 秒内回到 60 帧，没有明显差别；上限 4
 开头掉到过 30 以下，上限 2 最低 30。所以保持上限 2。由于加了这个文件，`build.py` 现在会报告与原文件不同，属于预期。
+
+## Intel 核显笔电配置（用户的 MSI）
+
+用户家里跑服务器的那台 Windows 笔电：i5-13420H（4 性能核 + 4 能效核，12 线程）、16GB 内存、
+1920×1080、缩放 100%。另一个助手用 Claude 自带浏览器读到显卡是 Intel UHD Graphics，但用户
+的 Chrome 实际用哪块显卡没确认；这个型号的笔电常见还带 NVIDIA 独显，Chrome 可能只是被
+Windows 的“图形设置”分到了核显。
+
+`02b` 里的 `detectPC()`：Windows + `hardwareConcurrency === 12` + WebGL 报告的 GPU 名含
+Intel UHD/Iris/HD/Xe 时命中（浏览器读不到 CPU 型号，所以只能这样判断）。命中后：
+
+- 渲染分辨率上限默认 1（这台机器缩放 100% 时没有变化，但以后调了 Windows 缩放也不会让
+  像素数跟着涨）
+- 把 `navigator.hardwareConcurrency` 报告为 4，mesh worker 上限 2（这台机器同时跑着 Paper
+  服务端、relay、隧道，少占一点 CPU；这是推断，没有对比测过）
+- 面板的 Auto 清晰度默认开（没有保存过选择时）
+- 带面板的版本启动时顶部显示 18 秒的横幅，写明用的是哪块 GPU，并提示“如果这台笔电还有
+  NVIDIA 独显，去 Windows 设置 → 系统 → 屏幕 → 图形里把 Chrome 设成高性能，重启 Chrome”
+
+`?pc=1` 强制开，`?pc=0` 关。Chrome 用独显时 GPU 名不含 Intel，不会命中，也就没有这套限制。
+面板新增 GPU 一行（整合显卡标黄、悬停有提示）和“Profile”一行（Intel PC / M1 Air / off），
+Record log 的头部写着设备配置和 GPU。**所有数字都没在这台真机上测过**，等用户在 Windows
+上用 Record log 录一段（可分别试 `?pc=0` 和默认）再调。
 
 ## 性能面板
 
