@@ -100,6 +100,11 @@ Intel UHD/Iris/HD/Xe 时命中（浏览器读不到 CPU 型号，所以只能这
 - 带面板的版本启动时顶部显示 18 秒的横幅，写明用的是哪块 GPU，并提示“如果这台笔电还有
   NVIDIA 独显，去 Windows 设置 → 系统 → 屏幕 → 图形里把 Chrome 设成高性能，重启 Chrome”
 
+探测显卡用的 WebGL 上下文和游戏一样请求 `powerPreference: "high-performance"`（游戏的上下文
+就是这么建的），这样双显卡笔电上报告的是游戏实际会用的那块。用户 2026-11-14 确认任务管理器
+里有 GPU 0 和 GPU 1，已经把 Chrome 加进 Windows 图形设置，但面板仍显示 Intel UHD，原因待查
+（Chrome 没有完全退出重开、设置不是“高性能”，或加错了 chrome.exe）。
+
 `?pc=1` 强制开，`?pc=0` 关。Chrome 用独显时 GPU 名不含 Intel，不会命中，也就没有这套限制。
 面板新增 GPU 一行（整合显卡标黄、悬停有提示）和“Profile”一行（Intel PC / M1 Air / off），
 Record log 的头部写着设备配置和 GPU。**所有数字都没在这台真机上测过**，等用户在 Windows

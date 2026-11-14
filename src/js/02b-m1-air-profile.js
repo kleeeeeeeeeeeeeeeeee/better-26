@@ -41,7 +41,10 @@
 	function gpuRenderer() {
 		try {
 			var canvas = document.createElement("canvas");
-			var gl = canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
+			// Ask for the same GPU the game asks for (it requests "high-performance"), so
+			// that on a laptop with two graphics chips this names the one the game will use.
+			var gl = canvas.getContext("webgl2", { powerPreference: "high-performance", antialias: false, alpha: false })
+				|| canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
 			if (!gl) return "";
 			var info = gl.getExtension("WEBGL_debug_renderer_info");
 			var name = info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
