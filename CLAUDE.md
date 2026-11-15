@@ -227,7 +227,8 @@ Display（清晰度滑块和 Auto）、Network（流量和连接）、Features�
   默认在左上角面板圆按钮下方（`top:48px`），可在 Mods 页换角。
 - 面板 Stats 页加了 `FPS` 一行，读 `__eaglerGame.fps`，和游戏屏幕上的数字一致。
 - `ClientFeatures` 只剩 `jade()`，坐标开关由页面自己读。
-- **要游戏本体是 2026-11-15 之后这次重编的版本才有数据**；用旧游戏时坐标不显示、FPS 一行隐藏。预览页
+- 游戏本体已重编并换进仓库（构建 `32ccde69191f1424`）。启动检查确认主菜单时 `__eaglerGame` 有数据（`inWorld:false`、`fps`、
+  `screen:3`）、坐标元素已建好、无页面错误；**进入世界后的坐标没在浏览器里看过**。用更早的游戏时坐标不显示、FPS 一行隐藏。预览页
   （`tools/panel_preview.py`）用一份假数据演示坐标显示。
 
 ## Paper 插件 JadeLite（让服务器上的提示条也显示箱子等内容）
