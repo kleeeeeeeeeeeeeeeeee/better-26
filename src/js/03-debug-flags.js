@@ -57,7 +57,7 @@
 				window.__eaglerRecoveredCrash = previousReport;
 				var journal = {
 					version: 2,
-					build: "21b0a73c5a7f5526",
+					build: "1e2017e0712b3280",
 					sessionId: Date.now().toString(36) + "-" + Math.random().toString(36).slice(2),
 					startedAt: Date.now(),
 					heartbeat: Date.now(),
@@ -305,11 +305,12 @@
 		// The hosted release may point this at a signed bundle on a separate
 		// large-file origin. An empty value keeps the preview download disabled.
 		window.eaglercraftXIwaBundleURL = "";
+		var eaglercraftXEmbedderOpts = window.eaglercraftXOpts;
 		window.eaglercraftXOpts = {
 			container: "game_frame",
 			assetsURI: [
-				{ url: "assets.epk?v=21b0a73c5a7f5526", path: "" },
-				{ url: "sounds.epk?v=21b0a73c5a7f5526", path: "" }
+				{ url: "assets.epk?v=1e2017e0712b3280", path: "" },
+				{ url: "sounds.epk?v=1e2017e0712b3280", path: "" }
 			],
 			localesURI: "lang/",
 			worldsDB: "worlds",
@@ -332,8 +333,14 @@
 			// -1 means adaptive. Java also honors an embedder-supplied positive override.
 			meshWorkerCount: chooseMeshWorkerCount()
 		};
-
-		// Java updates the early boot UI and harness log.
+			if (eaglercraftXEmbedderOpts && typeof eaglercraftXEmbedderOpts === "object") {
+				for (var eaglercraftXEmbedderKey in eaglercraftXEmbedderOpts) {
+					if (Object.prototype.hasOwnProperty.call(eaglercraftXEmbedderOpts, eaglercraftXEmbedderKey)) {
+						window.eaglercraftXOpts[eaglercraftXEmbedderKey] = eaglercraftXEmbedderOpts[eaglercraftXEmbedderKey];
+					}
+				}
+			}
+			// Java updates the early boot UI and harness log.
 		window.__eaglerBoot = function (pct, text) {
 			try { window.__log.push("BOOTSTAGE:" + pct + ":" + text); } catch (e) {}
 			try { window.__eaglerCrashJournal.stage("boot-" + pct + "-" + (text || "")); } catch (e) {}
@@ -347,7 +354,7 @@
 			} catch (e) {}
 		};
 		(function () {
-			var total = Number("32533839") || 0;
+			var total = Number("6616184") || 0;
 			var loadedByUrl = Object.create(null);
 			window.__eaglerAssetDownloadProgress = function (url, loaded) {
 				loadedByUrl[String(url).replace(/[?#].*$/, "")] = Math.max(0, Number(loaded) || 0);

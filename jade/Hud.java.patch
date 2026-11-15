@@ -1,0 +1,12 @@
+diff --git a/game/src/main/java/net/minecraft/client/gui/Hud.java b/game/src/main/java/net/minecraft/client/gui/Hud.java
+index f27ffa00..73e8fcad 100644
+--- a/game/src/main/java/net/minecraft/client/gui/Hud.java
++++ b/game/src/main/java/net/minecraft/client/gui/Hud.java
+@@ -221,6 +221,7 @@ public class Hud {
+          if (!this.isHidden) {
+             this.extractCameraOverlays(graphics, deltaTracker);
+             this.extractCrosshair(graphics, deltaTracker);
++            JadeHud.extractRenderState(this.minecraft, graphics);
+             graphics.nextStratum();
+             this.extractHotbarAndDecorations(graphics, deltaTracker);
+             this.extractEffects(graphics, deltaTracker);
