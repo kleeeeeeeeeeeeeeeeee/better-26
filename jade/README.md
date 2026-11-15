@@ -12,9 +12,48 @@ Jade 用的 Mixin。
 
 ## 文件
 
-- `JadeHud.java` — 放进工作区的 `game/src/main/java/net/minecraft/client/gui/`
-- `Hud.java.patch` — 在 `Hud.extractRenderState` 里加一行调用
+- `src/` — 新增的 Java 文件，按 `game/src/main/java/net/minecraft/` 下的相对路径放进工作区：
+  - `client/gui/JadeHud.java` — 画提示条（名字、图标、模组名、各类行）
+  - `client/gui/JadeLiteClient.java` — 向服务器请求方块内部数据，保存最新答复
+  - `server/JadeLiteServer.java` — 服务端：收到请求，读方块里的东西，打包回复
+  - `network/protocol/common/custom/JadeLite{Request,Data}Payload.java` — 两种自定义消息
+- `game.patch` — 对原有文件的改动（用 `git apply` 套进工作区）：把两种消息注册进客户端/服务端的
+  自定义消息表、收到消息时转给上面的类、`Hud` 里调用提示条、给熔炉和酿造台加只读取值方法
 - `mem.init.gradle` — 放进 `~/.gradle/init.d/`，见下面第 2 条
+
+## 功能现状
+
+只靠客户端（直接读方块状态或实体）：名字、图标、作物 Growth Value、红石线 Power、中继器 Delay、
+音符盒 Note、蜂巢 Honey Level、物品展示框里的物品、生物血量和护甲。
+
+要服务端配合（走下面的消息）：箱子/木桶/潜影盒/漏斗/投掷器/发射器里的物品（双箱合并、末影箱显示
+看的人自己的）、熔炉进度和三格物品、酿造台、唱片机。尚未实现：蜂巢里的蜜蜂、刷怪笼冷却、讲台、
+生物成长/繁殖、村民补货、状态效果、宠物主人。
+
+**状态（2026-11-15）：这一批代码只通过了 Java 编译，没有重编 Wasm，没有在浏览器里跑过。** 所以画面
+（物品格、进度条的位置和尺寸）、请求/回复是否真的走通，都没有验证过。单人和局域网的服务端在游戏源码里，
+所以只要重编就有；用户的 Paper 服务器需要另写一个插件（见下），在那之前这些行不会出现（客户端发 3 次
+没收到答复就不再问，重新进入世界会重置）。
+
+## 消息格式（给 Paper 插件用）
+
+两个频道，插件消息频道名就是下面的 id；数据用 Minecraft 的 `FriendlyByteBuf` 写法（VarInt、UTF 字符串
+= VarInt 长度加 UTF-8 字节、long 大端）。
+
+- `jadelite:req`（客户端→服务器）：`byte kind`（0=方块）、`long pos`（`BlockPos.asLong()`）、
+  `VarInt entityId`（方块时不用）。客户端对着有方块实体的方块时，换目标立刻发，之后每秒一次。
+- `jadelite:data`（服务器→客户端）：`byte kind`、`long pos`、`VarInt entityId`、`VarInt 长度 + 字节` 的
+  body（最大 16384）。body 是若干段，每段先一个 `byte type`：
+  - `1` ITEMS：`VarInt n`，n 个（utf 物品 id，VarInt 数量），客户端按种类合并显示，最多 54 种
+  - `2` FURNACE：`VarInt lit`、`VarInt cook`、`VarInt cookTotal`，再 3 个（utf id 或空串，VarInt 数量）
+  - `3` BREWING：`VarInt brewTime`、`VarInt fuel`，再 5 个（utf id 或空串，VarInt 数量；槽 0–2 是瓶子，
+    3 是材料，4 是燃料）
+  - `4` JUKEBOX：utf 唱片物品 id，或空串
+  - `5` LOOT：没有内容，表示这个容器还有没打开的战利品表，不能读（读槽位会触发生成战利品）
+  物品 id 是普通注册名，如 `minecraft:diamond`，所以插件用 Bukkit 的 `Material` 就能写，不用碰游戏的
+  物品编码。没有内容也要回一个空 body，这样客户端知道服务器支持。
+- 服务端的规则（`JadeLiteServer`）：距离 12 格以内、区块已加载；上锁的容器对打不开的玩家不回；还有
+  战利品表的容器不读。插件照这个做。
 
 ## 重新编译
 

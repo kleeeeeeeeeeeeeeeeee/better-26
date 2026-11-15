@@ -1,0 +1,113 @@
+diff --git a/game/src/main/java/net/minecraft/client/gui/Hud.java b/game/src/main/java/net/minecraft/client/gui/Hud.java
+index f27ffa00..73e8fcad 100644
+--- a/game/src/main/java/net/minecraft/client/gui/Hud.java
++++ b/game/src/main/java/net/minecraft/client/gui/Hud.java
+@@ -221,6 +221,7 @@ public class Hud {
+          if (!this.isHidden) {
+             this.extractCameraOverlays(graphics, deltaTracker);
+             this.extractCrosshair(graphics, deltaTracker);
++            JadeHud.extractRenderState(this.minecraft, graphics);
+             graphics.nextStratum();
+             this.extractHotbarAndDecorations(graphics, deltaTracker);
+             this.extractEffects(graphics, deltaTracker);
+diff --git a/game/src/main/java/net/minecraft/client/multiplayer/ClientPacketListener.java b/game/src/main/java/net/minecraft/client/multiplayer/ClientPacketListener.java
+index 655eeb82..51ba6385 100644
+--- a/game/src/main/java/net/minecraft/client/multiplayer/ClientPacketListener.java
++++ b/game/src/main/java/net/minecraft/client/multiplayer/ClientPacketListener.java
+@@ -2291,6 +2291,10 @@ public class ClientPacketListener extends ClientCommonPacketListenerImpl impleme
+             && this.eaglerSkinCache.handleLanPayload(lanSkinPayload)) {
+          return;
+       }
++      if (payload instanceof net.minecraft.network.protocol.common.custom.JadeLiteDataPayload jadeData) {
++         net.minecraft.client.gui.JadeLiteClient.accept(jadeData);
++         return;
++      }
+       this.handleUnknownCustomPayload(payload);
+    }
+ 
+diff --git a/game/src/main/java/net/minecraft/network/protocol/common/ClientboundCustomPayloadPacket.java b/game/src/main/java/net/minecraft/network/protocol/common/ClientboundCustomPayloadPacket.java
+index 1eccbf20..e9c1a0b4 100644
+--- a/game/src/main/java/net/minecraft/network/protocol/common/ClientboundCustomPayloadPacket.java
++++ b/game/src/main/java/net/minecraft/network/protocol/common/ClientboundCustomPayloadPacket.java
+@@ -20,7 +20,8 @@ public record ClientboundCustomPayloadPacket(CustomPacketPayload payload) implem
+          Util.make(
+             Lists.<CustomPacketPayload.TypeAndCodec<? super RegistryFriendlyByteBuf, ?>>newArrayList(
+                new CustomPacketPayload.TypeAndCodec<>(BrandPayload.TYPE, BrandPayload.STREAM_CODEC),
+-               new CustomPacketPayload.TypeAndCodec<>(LANPlayerSkinPayload26.TYPE, LANPlayerSkinPayload26.STREAM_CODEC)
++               new CustomPacketPayload.TypeAndCodec<>(LANPlayerSkinPayload26.TYPE, LANPlayerSkinPayload26.STREAM_CODEC),
++               new CustomPacketPayload.TypeAndCodec<>(net.minecraft.network.protocol.common.custom.JadeLiteDataPayload.TYPE, net.minecraft.network.protocol.common.custom.JadeLiteDataPayload.STREAM_CODEC)
+             ),
+             types -> {}
+          )
+diff --git a/game/src/main/java/net/minecraft/network/protocol/common/ServerboundCustomPayloadPacket.java b/game/src/main/java/net/minecraft/network/protocol/common/ServerboundCustomPayloadPacket.java
+index 51e851a1..eb64d481 100644
+--- a/game/src/main/java/net/minecraft/network/protocol/common/ServerboundCustomPayloadPacket.java
++++ b/game/src/main/java/net/minecraft/network/protocol/common/ServerboundCustomPayloadPacket.java
+@@ -18,7 +18,8 @@ public record ServerboundCustomPayloadPacket(CustomPacketPayload payload) implem
+          Util.make(
+             Lists.<CustomPacketPayload.TypeAndCodec<? super FriendlyByteBuf, ?>>newArrayList(
+                new CustomPacketPayload.TypeAndCodec<>(BrandPayload.TYPE, BrandPayload.STREAM_CODEC),
+-               new CustomPacketPayload.TypeAndCodec<>(LANPlayerSkinPayload26.TYPE, LANPlayerSkinPayload26.STREAM_CODEC)
++               new CustomPacketPayload.TypeAndCodec<>(LANPlayerSkinPayload26.TYPE, LANPlayerSkinPayload26.STREAM_CODEC),
++               new CustomPacketPayload.TypeAndCodec<>(net.minecraft.network.protocol.common.custom.JadeLiteRequestPayload.TYPE, net.minecraft.network.protocol.common.custom.JadeLiteRequestPayload.STREAM_CODEC)
+             ),
+             types -> {}
+          )
+diff --git a/game/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/game/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+index 9741cff2..e7ae1196 100644
+--- a/game/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java
++++ b/game/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+@@ -2394,6 +2394,9 @@ public class ServerGamePacketListenerImpl
+          net.lax1dude.eaglercraft.v1_8.profile.LANPlayerSkinBroker26.handle(
+                this.server, this.connection, this.player, lanSkinPayload);
+       }
++      if (packet.payload() instanceof net.minecraft.network.protocol.common.custom.JadeLiteRequestPayload jadeRequest) {
++         net.minecraft.server.JadeLiteServer.handle(this.player, jadeRequest);
++      }
+    }
+ 
+    @Override
+diff --git a/game/src/main/java/net/minecraft/world/level/block/entity/AbstractFurnaceBlockEntity.java b/game/src/main/java/net/minecraft/world/level/block/entity/AbstractFurnaceBlockEntity.java
+index b041d2fe..358b1b4e 100644
+--- a/game/src/main/java/net/minecraft/world/level/block/entity/AbstractFurnaceBlockEntity.java
++++ b/game/src/main/java/net/minecraft/world/level/block/entity/AbstractFurnaceBlockEntity.java
+@@ -63,6 +63,19 @@ public abstract class AbstractFurnaceBlockEntity extends BaseContainerBlockEntit
+    private int litTotalTime;
+    private int cookingTimer;
+    private int cookingTotalTime;
++
++   // Read-only views for the Jade-style tooltip.
++   public int jadeLitTime() {
++      return this.litTimeRemaining;
++   }
++
++   public int jadeCookingTimer() {
++      return this.cookingTimer;
++   }
++
++   public int jadeCookingTotal() {
++      return this.cookingTotalTime;
++   }
+    protected final ContainerData dataAccess = new ContainerData() {
+       @Override
+       public int get(final int dataId) {
+diff --git a/game/src/main/java/net/minecraft/world/level/block/entity/BrewingStandBlockEntity.java b/game/src/main/java/net/minecraft/world/level/block/entity/BrewingStandBlockEntity.java
+index e20f2005..f2ddb7c6 100644
+--- a/game/src/main/java/net/minecraft/world/level/block/entity/BrewingStandBlockEntity.java
++++ b/game/src/main/java/net/minecraft/world/level/block/entity/BrewingStandBlockEntity.java
+@@ -43,6 +43,15 @@ public class BrewingStandBlockEntity extends BaseContainerBlockEntity implements
+    private boolean[] lastPotionCount;
+    private Item ingredient;
+    private int fuel;
++
++   // Read-only views for the Jade-style tooltip.
++   public int jadeBrewTime() {
++      return this.brewTime;
++   }
++
++   public int jadeFuel() {
++      return this.fuel;
++   }
+    protected final ContainerData dataAccess = new ContainerData() {
+       @Override
+       public int get(final int dataId) {
