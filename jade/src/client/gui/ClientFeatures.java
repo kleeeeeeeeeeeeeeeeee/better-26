@@ -13,11 +13,4 @@ final class ClientFeatures {
 
    @JSBody(script = "var f=globalThis.__eaglerFeatures;return !f||f.jade!==false;")
    static native boolean jade();
-
-   @JSBody(script = "var f=globalThis.__eaglerFeatures;return !f||f.coords!==false;")
-   static native boolean coords();
-
-   /** One of "tl", "tr", "bl", "br". */
-   @JSBody(script = "var f=globalThis.__eaglerFeatures;var p=f&&f.coordsPos;return p==='tr'||p==='bl'||p==='br'?p:'tl';")
-   static native String coordsPos();
 }

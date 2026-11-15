@@ -4,7 +4,8 @@
 Usage: python3 tools/panel_preview.py
 
 About 50 KB, so the panel's look can be checked or shared without the 75 MB game.
-It loads src/css/panel-ui.css (with its icons inlined), 02b, 02f and 02c, and
+It loads src/css/panel-ui.css (with its icons inlined), 02b, 02f, 02g (with a made-up game
+snapshot) and 02c, and
 opens the panel. Nothing in it talks to a server.
 """
 import base64
@@ -39,6 +40,11 @@ def main():
         '<script>try{localStorage.setItem("eaglercraft26.perfPanel","open")}catch(e){}</script>'
         "<script>" + js("02b-m1-air-profile.js") + "</script>"
         "<script>" + js("02f-features.js") + "</script>"
+        # A made-up game snapshot so the coordinates readout shows in the preview.
+        "<script>setInterval(function(){window.__eaglerGame={inWorld:true,x:128.37,y:64,z:-56.72,bx:128,by:64,bz:-57,"
+        "yaw:178,pitch:10,fps:60,guiScale:2,screen:0,debug:false,hudHidden:false,time:6000,"
+        "biome:'minecraft:dark_forest',dimension:'minecraft:overworld',t:performance.now()}},200)</script>"
+        "<script>" + js("02g-coords-overlay.js") + "</script>"
         "<script>" + js("02c-perf-panel.js") + "</script>"
         '</head><body><div id="note">Panel preview only (no game). Click the tabs and buttons.</div></body></html>'
     )

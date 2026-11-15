@@ -15,6 +15,7 @@ base64 数据块；为了便于阅读和修改代码，仓库里保存的是拆�
   - `02d-home-server.js` — 自建服务器预设（后加的，见下文）
   - `02e-mac-shortcuts.js` — Mac 上把 Command+A/C/V/X 转成 Control 版本（后加的）
   - `02f-features.js` — 游戏内置功能的开关（Jade 提示条、坐标显示），状态存在 localStorage，游戏每帧读取（后加的）
+  - `02g-coords-overlay.js` — 坐标显示，由页面根据游戏每帧递来的 `window.__eaglerGame` 画（后加的）
   - `03-debug-flags.js` — URL 调试参数与诊断开关
   - `04-teavm-wasmgc-runtime.js` — TeaVM Wasm-GC 运行时（已压缩）
   - `05-worker-bootstrap.js` — 页面与 worker 共用的 Wasm-GC 启动逻辑
@@ -134,8 +135,7 @@ Display（清晰度滑块和 Auto）、Network（流量和连接）、Features�
 **Features 标签**：开关 Jade 提示条、坐标显示，选坐标显示在哪个角（左上、右上、左下、右下）。状态在
 `window.__eaglerFeatures`（`jade`、`coords`、`coordsPos`），由 `02f-features.js` 创建，所有构建都带（包括没有面板的
 朋友版，那时全部默认开）。游戏源码里 `ClientFeatures`（`@JSBody`）每帧读它，所以**开关要游戏本体是新编译的版本才有
-效果**；旧游戏不认这个对象，开关不起作用。坐标显示是 `CoordsHud`（精确坐标、所在方块、朝向），F3 调试屏幕打开时不画。用户反映打字（聊天框）和按 ESC 时坐标会消失，
-原因是最初写了“有界面打开就不画”；源码已改成界面打开时照常画（`jade/src/client/gui/CoordsHud.java`），**只编译检查过，还没重编进游戏**。
+效果**；旧游戏不认这个对象，开关不起作用。坐标显示后来改由页面画，见下文“游戏把状态递给页面”。
 这两个类的源码在 `jade/src/client/gui/`。
 
 `src/js/02c-perf-panel.js`。左上角的帧率小标签可以拖动，点击展开面板（界面是英文）：
@@ -213,6 +213,22 @@ Display（清晰度滑块和 Auto）、Network（流量和连接）、Features�
 - 现有 `local/` 目录被清空过一次，已从上次的构建里恢复 `local/home-server.json`（不含 `panel`）。
 - 打包时 `eaglercraft-26.2.html`（无 token 的普通版）要在 `local/home-server.json` 不存在时构建，否则
   会把 token 嵌进去。
+
+## 游戏把状态递给页面（`window.__eaglerGame`）
+
+为了少重编，2026-11-15 起游戏每帧把一份状态交给页面，由页面的 JS 画叠加层；以后改这些叠加层的样子和规则只改 JS。
+游戏里的 `GameStateBridge`（`jade/src/client/gui/`，在 `Gui.extractRenderState` 开头调用）写入：`inWorld`、`x/y/z`、
+`bx/by/bz`（方块）、`yaw`、`pitch`、`fps`（游戏自己的计数，就是它屏幕上显示的数）、`guiScale`、`screen`（0 无、1 聊天、
+2 暂停菜单、3 其他界面）、`debug`（F3）、`hudHidden`（F1）、`time`、`biome`、`dimension`（这两个只在变化时写）、`t`
+（`performance.now()`）。超过 1 秒没更新就当游戏没在发（旧版游戏根本不发）。
+
+- 坐标显示从游戏里的 `CoordsHud` 搬到了 `02g-coords-overlay.js`：三行（彩色 XYZ；方块坐标和朝向；生物群系，不在主世界时
+  加维度），风格和面板一致。聊天框、暂停菜单打开时保留（用户反映原来打字、按 ESC 会消失），F3、F1、不在世界里时隐藏。
+  默认在左上角面板圆按钮下方（`top:48px`），可在 Mods 页换角。
+- 面板 Stats 页加了 `FPS` 一行，读 `__eaglerGame.fps`，和游戏屏幕上的数字一致。
+- `ClientFeatures` 只剩 `jade()`，坐标开关由页面自己读。
+- **要游戏本体是 2026-11-15 之后这次重编的版本才有数据**；用旧游戏时坐标不显示、FPS 一行隐藏。预览页
+  （`tools/panel_preview.py`）用一份假数据演示坐标显示。
 
 ## Paper 插件 JadeLite（让服务器上的提示条也显示箱子等内容）
 

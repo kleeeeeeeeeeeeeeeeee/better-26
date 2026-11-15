@@ -395,6 +395,7 @@
 		graph.title = "Slowest frame in each half second, last 30 seconds. The line marks 60 FPS.";
 		cur.appendChild(graph);
 
+		row("gameFps", "FPS");
 		row("frame", "Worst frame");
 		row("game", "Game frame");
 		row("res", "Resolution");
@@ -495,7 +496,7 @@
 		toggle("Jade tooltip", "What you are looking at: name, crop growth, health. Chest, furnace and similar"
 			+ " details need a server that supports them.",
 			function () { return features.jade; }, function (value) { set("jade", value); });
-		toggle("Coordinates", "Position, block and facing direction. Hidden while the F3 screen is open.",
+		toggle("Coordinates", "Position, block, facing and biome. Stays on with chat or the menu open; hidden while F3 is open.",
 			function () { return features.coords; }, function (value) { set("coords", value); });
 
 		cur.appendChild(el("div", "font-size:12px;margin:8px 0 5px", "Coordinates corner"));
@@ -783,6 +784,11 @@
 
 		drawGraph();
 		rows.frame.textContent = worstShown ? worstShown.toFixed(1) + " ms" : "--";
+		// The game's own count (the number it shows on screen), handed over by the game itself.
+		var game = window.__eaglerGame;
+		var hasFps = !!(game && typeof game.fps === "number" && performance.now() - game.t < 2000);
+		rows.gameFpsLine.style.display = hasFps ? "flex" : "none";
+		if (hasFps) rows.gameFps.textContent = String(game.fps);
 
 		var pool = window.__meshWorkerPool;
 		var hasGame = !!(pool && pool.frameEwmaMs > 0);
