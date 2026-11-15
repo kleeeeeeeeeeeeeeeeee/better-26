@@ -200,13 +200,20 @@ Display（清晰度滑块和 Auto）、Network（流量和连接）、Features�
 - 打包时 `eaglercraft-26.2.html`（无 token 的普通版）要在 `local/home-server.json` 不存在时构建，否则
   会把 token 嵌进去。
 
+## Paper 插件 JadeLite（让服务器上的提示条也显示箱子等内容）
+
+`server-plugin/jadelite/`，成品 `release/jadelite-1.0.0.jar`，说明见那里的 README。回答 `jadelite:req`，格式与游戏内置
+服务端一致。要点：Paper 只给客户端登记过的频道发消息，Eaglercraft 客户端不登记，所以插件在玩家进服时用反射调用
+`addChannel`。只编译、对照 Paper 源码检查过，**没在真正的 Paper 上跑过**（容器里起 Paper 被权限规则拦了）。
+客户端发 3 次没收到答复就不再问，所以装好插件后玩家要重新进服一次。
+
 ## 服务器推送资源包（“服务器当模组加载器”的基础）
 
 2026-11-15 实测：服务器 `server.properties` 设了 `resource-pack`，客户端确实收到推送（日志
 `ClientboundResourcePackPushPacket`、`server resource-pack push ... policy=ENABLED`），但**旧版游戏（构建
 `21b0a73c5a7f5526`）里会失败**：下载或命中缓存后调用 `Files.setLastModifiedTime`，浏览器版不支持，抛
 `UnsupportedOperationException`，整个包作废（`Pack 1 failed to download` / `Failed to store downloaded file`）。
-新版源码 `HttpUtil.updateModificationTime` 已经 catch 这个异常，只记警告。**新版上是否真的生效还没验证**。
+新版源码 `HttpUtil.updateModificationTime` 已经 catch 这个异常，只记警告。**新版（`ea652f93`）上用户实测通过**：泥土名字变了。之后测试包已撤下、玻璃包恢复，WIT 插件（用 boss 条显示方块信息，和提示条重复）已停用。
 
 - 测试包：`server-packs/test-pack.zip`（只把泥土英文名改成 `Dirt [server pack OK]`，pack format 88，sha1
   `58b1d1630015582b664076ae35afffed7ab5af43`），用 raw.githubusercontent.com 的分支地址托管，响应带

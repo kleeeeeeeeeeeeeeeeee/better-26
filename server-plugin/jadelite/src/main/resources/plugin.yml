@@ -1,0 +1,5 @@
+name: JadeLite
+version: 1.0.0
+main: jadelite.JadeLitePlugin
+api-version: '26.2'
+description: Answers the better-26 Eaglercraft Jade-style tooltip with container, furnace, brewing stand and jukebox contents.
