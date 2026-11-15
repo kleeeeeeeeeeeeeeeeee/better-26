@@ -269,8 +269,11 @@
 	}
 
 	// --------------------------------------------------------------------- UI
-	function el(tag, css, text) {
+	// The look comes from the stylesheet #eag-mc-ui (src/css/mc-ui.css): the game's own
+	// button, tab and slider sprites, a tooltip-style card and the Monocraft pixel font.
+	function el(tag, cls, text, css) {
 		var node = document.createElement(tag);
+		if (cls) node.className = cls;
 		if (css) node.style.cssText = css;
 		if (text) node.textContent = text;
 		return node;
@@ -283,13 +286,10 @@
 		node.addEventListener("click", function (ev) { ev.preventDefault(); action(); });
 		return node;
 	}
-	var ACCENT = "#4da3ff";
-	var PANEL_W = 268;
-	var GRAPH_W = PANEL_W - 24;
-	var BUTTON_CSS = "flex:1;text-align:center;padding:5px 8px;border-radius:6px;"
-		+ "background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.16);white-space:nowrap";
+	var PANEL_W = 440;
+	var GRAPH_W = PANEL_W - 32;
 	var TAB_KEY = "eaglercraft26.perfPanel.tab";
-	var TABS = [["stats", "Stats"], ["display", "Display"], ["net", "Network"], ["features", "Features"]];
+	var TABS = [["stats", "Stats"], ["display", "Video"], ["net", "Network"], ["features", "Mods"]];
 
 	var root, pill, body, graph, rows = {}, slider, scaleLabel, autoButton;
 	var pages = {}, tabButtons = {}, cur = null, tab = "stats";
@@ -316,42 +316,31 @@
 
 	// Rows and sections are added to the page being built.
 	function section(title) {
-		cur.appendChild(el("div", "margin:11px 0 4px;font-size:10px;letter-spacing:1px;text-transform:uppercase;"
-			+ "color:" + ACCENT, title));
+		cur.appendChild(el("div", "eagmc-head", title, "margin:12px 0 4px"));
 	}
 	function row(key, label) {
-		var line = el("div", "display:flex;justify-content:space-between;gap:14px;padding:1px 0");
-		line.appendChild(el("span", "opacity:0.6", label));
-		rows[key] = el("span", "text-align:right");
+		var line = el("div", "", "", "display:flex;justify-content:space-between;gap:16px");
+		line.appendChild(el("span", "eagmc-dim", label, "flex:none"));
+		rows[key] = el("span", "", "", "text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap");
 		rows[key + "Line"] = line;
 		line.appendChild(rows[key]);
 		cur.appendChild(line);
 	}
 	function note(text) {
-		cur.appendChild(el("div", "font-size:10px;line-height:1.4;opacity:0.55;margin:2px 0 4px", text));
+		cur.appendChild(el("div", "eagmc-note", text, "margin:4px 0 6px"));
+	}
+	function button(text, action) {
+		return clickable(el("div", "eagmc-btn", text), action);
 	}
 
-	// A labelled on/off switch. get() reads the current value, set(value) stores it.
+	// A Minecraft options style on/off button: "Name: ON". get() reads, set(value) stores.
 	function toggle(label, hint, get, set) {
-		var line = el("div", "display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 0");
-		var text = el("div", "min-width:0");
-		text.appendChild(el("div", "font-size:12px", label));
-		if (hint) text.appendChild(el("div", "font-size:10px;line-height:1.4;opacity:0.55;margin-top:1px", hint));
-		line.appendChild(text);
-		var track = el("div", "flex:none;position:relative;width:34px;height:18px;border-radius:9px;"
-			+ "transition:background 0.15s");
-		var knob = el("div", "position:absolute;top:2px;width:14px;height:14px;border-radius:50%;"
-			+ "background:#fff;transition:left 0.15s");
-		track.appendChild(knob);
-		function paint() {
-			var on = !!get();
-			track.style.background = on ? ACCENT : "rgba(255,255,255,0.22)";
-			knob.style.left = on ? "18px" : "2px";
-		}
-		clickable(track, function () { set(!get()); paint(); });
+		var node = button("", function () { set(!get()); paint(); });
+		function paint() { node.textContent = label + ": " + (get() ? "ON" : "OFF"); }
 		paint();
-		line.appendChild(track);
-		cur.appendChild(line);
+		node.style.marginTop = "6px";
+		cur.appendChild(node);
+		if (hint) note(hint);
 	}
 
 	function showTab(name) {
@@ -359,9 +348,7 @@
 		TABS.forEach(function (entry) {
 			var active = entry[0] === tab;
 			pages[entry[0]].style.display = active ? "block" : "none";
-			tabButtons[entry[0]].style.color = active ? "#fff" : "rgba(255,255,255,0.55)";
-			tabButtons[entry[0]].style.borderBottomColor = active ? ACCENT : "transparent";
-			tabButtons[entry[0]].style.background = active ? "rgba(255,255,255,0.06)" : "transparent";
+			tabButtons[entry[0]].classList.toggle("eagmc-sel", active);
 		});
 		save(TAB_KEY, tab);
 		update();
@@ -388,8 +375,8 @@
 
 	function buildStatsPage() {
 		cur = pages.stats;
-		graph = el("canvas", "display:block;width:" + GRAPH_W + "px;height:46px;margin-bottom:6px;"
-			+ "background:rgba(255,255,255,0.05);border-radius:6px");
+		graph = el("canvas", "", "", "display:block;width:" + GRAPH_W + "px;height:60px;margin:2px 0 8px;"
+			+ "background:rgba(0,0,0,0.55);image-rendering:pixelated");
 		graph.title = "Slowest frame in each half second, last 30 seconds. The line marks 60 FPS.";
 		cur.appendChild(graph);
 
@@ -403,9 +390,9 @@
 		section("Chunk meshing");
 		row("mesh", "Workers");
 		row("meshQueue", "Waiting");
-		row("meshFlight", "In progress");
+		row("meshFlight", "Working");
 		row("meshDone", "Built");
-		row("meshInline", "Built inline");
+		row("meshInline", "Inline");
 		row("meshErrors", "Errors");
 
 		section("System");
@@ -418,12 +405,12 @@
 		cur = pages.display;
 		section("Render scale");
 		if (!scale) {
-			note("Render scale control is not available in this browser.");
+			note("Not available in this browser.");
 			return;
 		}
-		note("Lower scale draws fewer pixels, which is faster. Auto lowers it while the frame rate is low.");
-		var line = el("div", "display:flex;align-items:center;gap:10px;margin-top:6px");
-		slider = el("input", "flex:1;min-width:0;margin:0");
+		note("Lower draws fewer pixels: faster.");
+		var wrap = el("div", "eagmc-slider-wrap");
+		slider = el("input", "eagmc-slider");
 		slider.type = "range";
 		slider.min = "0.5";
 		slider.step = "0.25";
@@ -441,24 +428,22 @@
 		});
 		slider.addEventListener("change", release);
 		slider.addEventListener("pointerup", release);
-		line.appendChild(slider);
-		scaleLabel = el("span", "min-width:48px;text-align:right");
-		line.appendChild(scaleLabel);
-		cur.appendChild(line);
+		wrap.appendChild(slider);
+		scaleLabel = el("div", "eagmc-slider-label");
+		wrap.appendChild(scaleLabel);
+		cur.appendChild(wrap);
 
-		var autoLine = el("div", "display:flex;gap:8px;margin-top:8px;align-items:center");
-		autoButton = clickable(el("div", BUTTON_CSS, "Auto"), function () {
+		autoButton = button("Auto", function () {
 			autoOn = !autoOn;
 			save(AUTO_KEY, autoOn ? "on" : "off");
 			if (autoOn) auto.reset(); else applyScale(chosenScale(), false);
 			update();
 		});
-		autoButton.style.flex = "0 0 70px";
+		autoButton.style.marginTop = "6px";
 		autoButton.title = "Lower the scale while the frame rate is low, raise it back when steady";
-		autoLine.appendChild(autoButton);
-		rows.autoState = el("span", "flex:1;opacity:0.6;text-align:right");
-		autoLine.appendChild(rows.autoState);
-		cur.appendChild(autoLine);
+		cur.appendChild(autoButton);
+		rows.autoState = el("div", "eagmc-dim", "", "text-align:center;margin-top:4px");
+		cur.appendChild(rows.autoState);
 
 		auto = createAuto({
 			// On a screen at ratio 1 the scale is already 1x, so the automatic mode needs
@@ -475,8 +460,8 @@
 		section("Traffic");
 		row("down", "Download");
 		row("up", "Upload");
-		row("conn", "Connection");
-		note("The warning NO DATA appears on the top label when nothing has arrived for 5 seconds.");
+		row("conn", "Server");
+		note("NO DATA appears on the menu button when nothing has arrived for 5 seconds.");
 	}
 
 	var CORNER_NAMES = [["tl", "Top left"], ["tr", "Top right"], ["bl", "Bottom left"], ["br", "Bottom right"]];
@@ -485,54 +470,48 @@
 		cur = pages.features;
 		var features = window.__eaglerFeatures;
 		var set = window.__eaglerFeatureSet;
-		section("In the game");
+		section("In game");
 		if (!features || typeof set !== "function") {
 			note("This build has no feature switches.");
 			return;
 		}
-		toggle("Jade tooltip", "What you are looking at: name, crop growth, health. Chest, furnace and similar"
-			+ " details need a server that supports them.",
+		toggle("Jade tooltip", "What you look at, and what is inside chests and furnaces.",
 			function () { return features.jade; }, function (value) { set("jade", value); });
-		toggle("Coordinates", "Position, block and facing direction. Hidden while the F3 screen is open.",
+		toggle("Coordinates", "Position, block and facing. Hidden while F3 is open.",
 			function () { return features.coords; }, function (value) { set("coords", value); });
 
-		cur.appendChild(el("div", "font-size:12px;margin:8px 0 5px", "Coordinates corner"));
-		var grid = el("div", "display:grid;grid-template-columns:1fr 1fr;gap:6px");
+		section("Coordinates corner");
+		var grid = el("div", "", "", "display:grid;grid-template-columns:1fr 1fr;gap:4px");
 		var corners = {};
 		function paintCorners() {
 			CORNER_NAMES.forEach(function (entry) {
-				var on = features.coordsPos === entry[0];
-				corners[entry[0]].style.background = on ? ACCENT : "rgba(255,255,255,0.08)";
-				corners[entry[0]].style.borderColor = on ? ACCENT : "rgba(255,255,255,0.16)";
+				corners[entry[0]].classList.toggle("eagmc-sel", features.coordsPos === entry[0]);
 			});
 		}
 		CORNER_NAMES.forEach(function (entry) {
-			corners[entry[0]] = clickable(el("div", BUTTON_CSS, entry[1]), function () {
+			corners[entry[0]] = button(entry[1], function () {
 				set("coordsPos", entry[0]);
 				paintCorners();
 			});
-			corners[entry[0]].style.flex = "none";
 			grid.appendChild(corners[entry[0]]);
 		});
 		paintCorners();
 		cur.appendChild(grid);
-		note("Changes apply at once and are remembered in this browser.");
+		note("Saved in this browser.");
 	}
 
 	function build() {
 		scale = window.__eaglerRenderScale && window.__eaglerRenderScale.available ? window.__eaglerRenderScale : null;
 		var pos = null;
 		try { pos = JSON.parse(load(POS_KEY)); } catch (e) {}
-		root = el("div", "position:fixed;z-index:2147483645;color:#fff;"
-			+ "font:11px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;"
-			+ "user-select:none;-webkit-user-select:none");
+		root = el("div", "", "", "position:fixed;z-index:2147483645;user-select:none;-webkit-user-select:none");
 		root.id = "eag_perf_panel";
 		root.style.left = (pos && pos.x >= 0 ? pos.x : 6) + "px";
 		root.style.top = (pos && pos.y >= 0 ? pos.y : 6) + "px";
 
-		pill = el("div", "display:inline-block;padding:3px 10px;border-radius:999px;cursor:grab;"
-			+ "background:rgba(14,16,22,0.72);border:1px solid rgba(255,255,255,0.14);touch-action:none;"
-			+ "font-variant-numeric:tabular-nums", "-- FPS");
+		// The menu button. The game shows its own frame rate, so this shows no number of its own,
+		// only warnings (no data on the connection, a log being recorded).
+		pill = el("div", "eagmc-btn", "\u2261", "display:inline-flex;min-width:40px;cursor:grab;touch-action:none");
 		pill.title = "Click to open, drag to move";
 		root.appendChild(pill);
 
@@ -570,19 +549,16 @@
 			pill.addEventListener("pointercancel", end);
 		})();
 
-		body = el("div", "margin-top:6px;width:" + PANEL_W + "px;border-radius:12px;overflow:hidden;"
-			+ "background:rgba(14,16,22,0.92);border:1px solid rgba(255,255,255,0.12);"
-			+ "box-shadow:0 10px 30px rgba(0,0,0,0.5)");
+		body = el("div", "eagmc-card", "", "margin-top:4px;width:" + PANEL_W + "px;padding:10px 12px 12px");
 
-		var tabbar = el("div", "display:flex;border-bottom:1px solid rgba(255,255,255,0.1)");
-		var host = el("div", "padding:10px 12px;max-height:min(58vh,430px);overflow-y:auto");
+		var tabbar = el("div", "", "", "display:flex;gap:2px;border-bottom:2px solid rgba(255,255,255,0.25)");
+		var host = el("div", "eagmc-scroll", "", "padding:4px 4px 0;max-height:min(62vh,520px);overflow-y:auto");
 		TABS.forEach(function (entry) {
-			pages[entry[0]] = el("div", "display:none");
+			pages[entry[0]] = el("div", "", "", "display:none");
 			host.appendChild(pages[entry[0]]);
-			var button = clickable(el("div", "flex:1;text-align:center;padding:8px 0 7px;font-size:11px;"
-				+ "letter-spacing:0.3px;border-bottom:2px solid transparent", entry[1]), function () { showTab(entry[0]); });
-			tabButtons[entry[0]] = button;
-			tabbar.appendChild(button);
+			var tabButton = clickable(el("div", "eagmc-tab", entry[1]), function () { showTab(entry[0]); });
+			tabButtons[entry[0]] = tabButton;
+			tabbar.appendChild(tabButton);
 		});
 		body.appendChild(tabbar);
 		body.appendChild(host);
@@ -592,8 +568,8 @@
 		buildNetworkPage();
 		buildFeaturesPage();
 
-		var buttons = el("div", "display:flex;gap:8px;padding:8px 12px 10px;border-top:1px solid rgba(255,255,255,0.1)");
-		buttons.appendChild(clickable(el("div", BUTTON_CSS, "Fullscreen"), function () {
+		var buttons = el("div", "", "", "display:flex;gap:4px;margin-top:10px");
+		var full = button("Fullscreen", function () {
 			try {
 				if (document.fullscreenElement || document.webkitFullscreenElement) {
 					(document.exitFullscreen || document.webkitExitFullscreen).call(document);
@@ -602,10 +578,13 @@
 					(frame.requestFullscreen || frame.webkitRequestFullscreen).call(frame);
 				}
 			} catch (e) {}
-		}));
-		recordButton = clickable(el("div", BUTTON_CSS, "Record log"), function () {
+		});
+		full.style.flex = "1";
+		buttons.appendChild(full);
+		recordButton = button("Record log", function () {
 			if (recording) stopRecording(); else startRecording();
 		});
+		recordButton.style.flex = "1";
 		recordButton.title = "Record 60 seconds of performance data and download it. Click again to stop early.";
 		buttons.appendChild(recordButton);
 		body.appendChild(buttons);
@@ -623,9 +602,9 @@
 
 		// The game puts #game_frame into fullscreen; elements outside it disappear.
 		function follow() {
-			var full = document.fullscreenElement || document.webkitFullscreenElement;
-			var host = full && full.tagName !== "CANVAS" ? full : document.body;
-			if (root.parentNode !== host) host.appendChild(root);
+			var fullscreen = document.fullscreenElement || document.webkitFullscreenElement;
+			var parent = fullscreen && fullscreen.tagName !== "CANVAS" ? fullscreen : document.body;
+			if (root.parentNode !== parent) parent.appendChild(root);
 			fit();
 		}
 		document.addEventListener("fullscreenchange", follow);
@@ -713,12 +692,12 @@
 		return (h ? h + ":" + (m < 10 ? "0" : "") : "") + m + ":" + (s < 10 ? "0" : "") + s;
 	}
 	function frameColor(ms) {
-		return ms <= 20 ? "#7CFC7C" : ms <= 34 ? "#FFD95A" : "#FF7A7A";
+		return ms <= 20 ? "#55FF55" : ms <= 34 ? "#FFFF55" : "#FF5555";
 	}
 
 	function drawGraph() {
 		var ratio = Math.min(nativeRatio(), 2);
-		var w = GRAPH_W, h = 46;
+		var w = GRAPH_W, h = 60;
 		if (graph.width !== Math.round(w * ratio)) {
 			graph.width = Math.round(w * ratio);
 			graph.height = Math.round(h * ratio);
@@ -749,17 +728,17 @@
 
 	function update() {
 		if (!root) return;
-		var rounded = Math.round(fps);
 		var silent = silentSeconds();
 		var left = recording ? Math.max(0, Math.ceil((RECORD_MS - (Date.now() - recording.startedAt)) / 1000)) : 0;
-		pill.textContent = (fps ? rounded : "--") + " FPS" + (silent >= 5 ? "  NO DATA " + Math.floor(silent) + "s" : "")
-			+ (recording ? "  REC " + left + "s" : "");
+		var warnings = [];
+		if (silent >= 5) warnings.push("NO DATA " + Math.floor(silent) + "s");
+		if (recording) warnings.push("REC " + left + "s");
+		pill.textContent = warnings.length ? "\u2261 " + warnings.join("  ") : "\u2261";
+		pill.style.color = silent >= 5 || recording ? "#FF5555" : "";
 		if (recordButton) {
 			recordButton.textContent = recording ? "Stop (" + left + "s)" : "Record log";
-			recordButton.style.background = recording ? "rgba(255,90,90,0.45)" : "transparent";
+			recordButton.style.color = recording ? "#FF5555" : "";
 		}
-		pill.style.color = silent >= 5 ? "#FF7A7A" : !fps ? "#fff" : rounded >= refresh * 0.83 ? "#7CFC7C"
-			: rounded >= refresh * 0.5 ? "#FFD95A" : "#FF7A7A";
 		if (!open) return;
 
 		drawGraph();
@@ -786,7 +765,7 @@
 			rows.meshInline.textContent = String(Math.round(pool.inline || 0));
 			rows.meshErrors.textContent = (pool.errors | 0) + " errors, " + (pool.cancelledJobs | 0) + " cancelled, "
 				+ (pool.shrinks | 0) + " shrinks";
-			rows.meshErrors.style.color = pool.errors > 0 ? "#FF7A7A" : "";
+			rows.meshErrors.style.color = pool.errors > 0 ? "#FF5555" : "";
 		} else {
 			rows.mesh.textContent = "not started";
 			rows.meshQueue.textContent = rows.meshFlight.textContent = rows.meshDone.textContent = "--";
@@ -798,7 +777,7 @@
 		var gpuName = profile && profile.gpu ? (window.__eaglerShortGpu ? window.__eaglerShortGpu(profile.gpu) : profile.gpu) : "";
 		rows.gpuLine.style.display = gpuName ? "flex" : "none";
 		rows.gpu.textContent = gpuName + (profile && profile.integratedGpu ? " (integrated)" : "");
-		rows.gpu.style.color = profile && profile.integratedGpu ? "#FFD95A" : "";
+		rows.gpu.style.color = profile && profile.integratedGpu ? "#FFFF55" : "";
 		rows.gpu.title = profile && profile.gpu ? profile.gpu
 			+ (profile.integratedGpu ? "\nIf this laptop also has a dedicated GPU, set Chrome to High performance in"
 				+ " Windows Settings > System > Display > Graphics." : "") : "";
@@ -806,22 +785,20 @@
 		if (scale) {
 			var chosen = chosenScale();
 			var isNative = chosen >= nativeRatio() - 0.001;
-			scaleLabel.textContent = isNative ? "Native" : chosen + "x";
-			autoButton.style.background = autoOn ? "rgba(255,255,255,0.28)" : "transparent";
-			rows.autoState.textContent = autoOn
-				? "now " + (+scale.effective().toFixed(2)) + "x"
-				: (+scale.effective().toFixed(2)) + "x";
+			scaleLabel.textContent = "Render scale: " + (isNative ? "Native" : chosen + "x");
+			autoButton.textContent = "Auto: " + (autoOn ? "ON" : "OFF");
+			rows.autoState.textContent = "Now " + (+scale.effective().toFixed(2)) + "x";
 		}
 
 		refreshConnections();
 		rows.down.textContent = rate(net.downRate) + " (" + amount(net.down) + ")";
 		rows.up.textContent = rate(net.upRate) + " (" + amount(net.up) + ")";
 		rows.conn.textContent = net.open > 0
-			? (net.host.length > 22 ? net.host.slice(0, 21) + "..." : net.host) + " " + net.connectMs + " ms"
+			? (net.host.length > 16 ? net.host.slice(0, 15) + "..." : net.host) + " " + net.connectMs + " ms"
 				+ (silent >= 5 ? ", silent " + Math.floor(silent) + "s" : "")
 			: "none";
 		rows.conn.title = net.open > 0 ? net.host + ", connected in " + net.connectMs + " ms" : "";
-		rows.conn.style.color = silent >= 5 ? "#FF7A7A" : "";
+		rows.conn.style.color = silent >= 5 ? "#FF5555" : "";
 
 		rows.time.textContent = duration(Date.now() - startedAt);
 	}

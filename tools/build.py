@@ -5,7 +5,8 @@ Usage: python3 tools/build.py [output.html]
 
 Reads src/index.template.html, replaces every token with the content of the
 file it names (see tools/split.py for the token format; @@EAG:json:<path>@@
-inserts an optional local JSON file, or null when it does not exist) and writes
+inserts an optional local JSON file, or null when it does not exist; tokens inside an
+inserted .css file are expanded too) and writes
 dist/eaglercraft-26.2.html. Finally compares the SHA-256 of the result with
 tools/original.sha256 and reports whether the output is byte-identical to the
 original file.
@@ -41,6 +42,9 @@ def expand(m: "re.Match[bytes]") -> bytes:
     data = (ROOT / rel).read_bytes()
     if kind == b"b64":
         return b64_wrap(data, int(width or 0))
+    if rel.endswith(".css"):
+        # Stylesheets may embed images and fonts with their own b64 tokens.
+        return TOKEN_RE.sub(expand, data)
     return data
 
 

@@ -20,6 +20,11 @@ base64 数据块；为了便于阅读和修改代码，仓库里保存的是拆�
   - `05-worker-bootstrap.js` — 页面与 worker 共用的 Wasm-GC 启动逻辑
   - `06-main.js` — 主入口（`type="module"`）
 - `src/css/style.css` — 加载界面、横屏提示等样式
+- `src/css/mc-ui.css` — 性能面板的 Minecraft 风格样式（后加的）。里面用 `@@EAG:b64:...@@` 内嵌下面的贴图和字体；
+  `build.py` 会展开插入的 `.css` 文件里的占位符（只对 `.css`）
+- `src/img/mc/` — 游戏自带的按钮、标签页、滑块贴图（从 26.2 资源里拷出，nine-slice 边框按各自 `.mcmeta`）
+- `src/font/monocraft-ascii.woff2` — Monocraft 像素字体只保留 ASCII 和几个符号的子集（2.8KB），SIL OFL 1.1，
+  授权文本在 `src/font/Monocraft-OFL.txt`。字体一个像素是 1/9 em，所以用 18px 时像素对齐
 - `src/img/` — 页面图标 `icon.png` 和启动图 `boot.png`
 - `payloads/` — 6 个二进制数据块（原文件中是 base64）
   - `decoder.wasm` — Brotli 解码器的 WASM
@@ -33,6 +38,7 @@ base64 数据块；为了便于阅读和修改代码，仓库里保存的是拆�
   写死禁用的，所以用这个脚本代替。用用户的真实存档跑过：6623 个地形区块的坐标和
   `DataVersion`（4903，即 26.2）全部核对一致；还没在真正的 26.2 服务端上加载过
 - `tools/encrypt-token.html` — 独立页面，本地用密码加密 relay token，见“自建服务器预设”
+- `tools/panel_preview.py` — 生成 `dist/panel-preview.html`（约 60KB，只有面板没有游戏），改面板外观后用它看效果或发给用户
 - `tools/connection-test.html` — 独立的连接测试页，在目标网络下用浏览器打开，检查能否连到
   内置 relay、trycloudflare.com 以及用户自己的服务器地址
 - `dist/` — 构建输出，已加入 `.gitignore`
@@ -113,7 +119,15 @@ Record log 的头部写着设备配置和 GPU。**所有数字都没在这台真
 
 ## 性能面板
 
-**2026-11-15 重新设计了界面**：深色圆角卡片，四个标签页——Stats（帧时间曲线、GPU、区块网格、电量、游玩时长）、
+**2026-11-15 第二次改成 Minecraft 风格**（用户要“MC 的味道”）：卡片是原版提示框的样子（深紫黑底、紫色细边、切角），
+按钮、标签页、滑块用游戏自己的贴图（GUI 放大 2 倍），文字用 Monocraft 像素字体 18px 加原版那种文字阴影；
+开关写成原版选项的样子（`Jade tooltip: ON`），选中的角落是黄色字，小节标题黄色。标签页改名为 Stats、Video、
+Network、Mods。**左上角的菜单按钮不再显示帧率**：用户反映游戏自带的帧率和面板的帧率同时出现、数值总有偏差
+（游戏数“一整秒画了多少帧”、每秒更新；面板用 requestAnimationFrame 间隔估、每半秒更新）。现在按钮只显示 `≡`，
+连接没数据或正在录日志时才附加红字提示。面板内部仍用自己的测量（帧时间曲线、Auto）。用 `tools/panel_preview.py`
+在无头浏览器里截图核对过外观；没在真机上看过。
+
+之前的版本（同日）：深色圆角卡片，四个标签页——Stats（帧时间曲线、GPU、区块网格、电量、游玩时长）、
 Display（清晰度滑块和 Auto）、Network（流量和连接）、Features（开关）；底部固定 Fullscreen 和 Record log。
 当前标签记在 localStorage `eaglercraft26.perfPanel.tab`。数据逻辑（测量、Auto、录日志）没有改，只换了界面结构。
 **只在 Node 里用假的 DOM 把构建流程和所有点击处理跑过，没有在真实浏览器里看过外观**，位置、间距、字体可能还要调。
