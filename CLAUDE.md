@@ -20,12 +20,9 @@ base64 数据块；为了便于阅读和修改代码，仓库里保存的是拆�
   - `05-worker-bootstrap.js` — 页面与 worker 共用的 Wasm-GC 启动逻辑
   - `06-main.js` — 主入口（`type="module"`）
 - `src/css/style.css` — 加载界面、横屏提示等样式
-- `src/css/mc-ui.css` — 性能面板的 Minecraft 风格样式（后加的）。里面用 `@@EAG:b64:...@@` 内嵌下面的贴图和字体；
-  `build.py` 会展开插入的 `.css` 文件里的占位符（只对 `.css`）
-- `src/img/mc/` — 游戏自带的按钮、标签页、滑块贴图（从 26.2 资源里拷出，nine-slice 边框按各自 `.mcmeta`）
-- `src/font/monocraft-ascii.woff2` — Monocraft 像素字体只保留 ASCII 和几个符号的子集（2.8KB），SIL OFL 1.1，
-  授权文本在 `src/font/Monocraft-OFL.txt`。字体一个像素是 1/9 em，所以用 18px 时像素对齐
-- `src/img/` — 页面图标 `icon.png` 和启动图 `boot.png`
+- `src/css/panel-ui.css` — 性能面板用的物品小图标（后加的）。用 `@@EAG:b64:...@@` 内嵌 `src/img/icons/` 里的
+  图片；`build.py` 会展开插入的 `.css` 文件里的占位符（只对 `.css`）
+- `src/img/icons/` — 游戏自带的 16×16 物品贴图：红石粉（菜单按钮）、时钟、望远镜、末影珍珠、附魔书（标签页）
 - `payloads/` — 6 个二进制数据块（原文件中是 base64）
   - `decoder.wasm` — Brotli 解码器的 WASM
   - `client.wasm.br` / `mesh.wasm.br` / `server.wasm.br` — Brotli 压缩的游戏 WASM
@@ -38,7 +35,7 @@ base64 数据块；为了便于阅读和修改代码，仓库里保存的是拆�
   写死禁用的，所以用这个脚本代替。用用户的真实存档跑过：6623 个地形区块的坐标和
   `DataVersion`（4903，即 26.2）全部核对一致；还没在真正的 26.2 服务端上加载过
 - `tools/encrypt-token.html` — 独立页面，本地用密码加密 relay token，见“自建服务器预设”
-- `tools/panel_preview.py` — 生成 `dist/panel-preview.html`（约 60KB，只有面板没有游戏），改面板外观后用它看效果或发给用户
+- `tools/panel_preview.py` — 生成 `dist/panel-preview.html`（约 50KB，只有面板没有游戏），改面板外观后用它看效果或发给用户
 - `tools/connection-test.html` — 独立的连接测试页，在目标网络下用浏览器打开，检查能否连到
   内置 relay、trycloudflare.com 以及用户自己的服务器地址
 - `dist/` — 构建输出，已加入 `.gitignore`
@@ -119,13 +116,15 @@ Record log 的头部写着设备配置和 GPU。**所有数字都没在这台真
 
 ## 性能面板
 
-**2026-11-15 第二次改成 Minecraft 风格**（用户要“MC 的味道”）：卡片是原版提示框的样子（深紫黑底、紫色细边、切角），
-按钮、标签页、滑块用游戏自己的贴图（GUI 放大 2 倍），文字用 Monocraft 像素字体 18px 加原版那种文字阴影；
-开关写成原版选项的样子（`Jade tooltip: ON`），选中的角落是黄色字，小节标题黄色。标签页改名为 Stats、Video、
-Network、Mods。**左上角的菜单按钮不再显示帧率**：用户反映游戏自带的帧率和面板的帧率同时出现、数值总有偏差
-（游戏数“一整秒画了多少帧”、每秒更新；面板用 requestAnimationFrame 间隔估、每半秒更新）。现在按钮只显示 `≡`，
-连接没数据或正在录日志时才附加红字提示。面板内部仍用自己的测量（帧时间曲线、Auto）。用 `tools/panel_preview.py`
-在无头浏览器里截图核对过外观；没在真机上看过。
+**2026-11-15 定稿的界面（第三版）**：用户试了一版完全 Minecraft 化的面板（原版按钮/标签/滑块贴图、Monocraft 像素
+字体、提示框底色），觉得不如第一版好看，要求退回第一版再重新设计，“酷、符合他的风格，但要和 MC 搭”。现在是：
+第一版的深色半透明卡片和普通字体，圆角收小（卡片 6px、按钮 3px），开关滑块和小节标题用 MC 绿 `#5BD45B`，警告用
+MC 的黄 `#FFFF55`、红 `#FF5555`，开关的圆钮改成小方块；标签页 Stats、Video、Network、Mods 前面各有一个游戏物品
+图标（时钟、望远镜、末影珍珠、附魔书）。**左上角的菜单按钮是一个圆形，里面是红石粉图标，不显示帧率**：用户反映
+游戏自带的帧率和面板的帧率同时出现、数值总有偏差（游戏数“一整秒画了多少帧”、每秒更新；面板用
+requestAnimationFrame 间隔估、每半秒更新）。连接没数据或正在录日志时，按钮变成胶囊形，图标旁加红字。面板内部仍用
+自己的测量（帧时间曲线、Auto）。用 `tools/panel_preview.py` 生成的预览页在无头浏览器里截图核对过外观；没在真机上看过。
+不要再改回像素字体和原版贴图那一版。
 
 之前的版本（同日）：深色圆角卡片，四个标签页——Stats（帧时间曲线、GPU、区块网格、电量、游玩时长）、
 Display（清晰度滑块和 Auto）、Network（流量和连接）、Features（开关）；底部固定 Fullscreen 和 Record log。

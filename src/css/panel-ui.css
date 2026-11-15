@@ -1,0 +1,8 @@
+/* Item icons for the performance panel (02c-perf-panel.js): the game's own 16x16 item
+   textures, kept pixel sharp. Image URLs are build tokens that tools/build.py inlines. */
+.eagicon{display:inline-block;flex:none;width:16px;height:16px;background-size:16px 16px;background-repeat:no-repeat;image-rendering:pixelated}
+.eagicon-redstone{width:20px;height:20px;background-size:20px 20px;background-image:url(data:image/png;base64,@@EAG:b64:src/img/icons/redstone.png:0@@)}
+.eagicon-clock{background-image:url(data:image/png;base64,@@EAG:b64:src/img/icons/clock_00.png:0@@)}
+.eagicon-spyglass{background-image:url(data:image/png;base64,@@EAG:b64:src/img/icons/spyglass.png:0@@)}
+.eagicon-pearl{background-image:url(data:image/png;base64,@@EAG:b64:src/img/icons/ender_pearl.png:0@@)}
+.eagicon-book{background-image:url(data:image/png;base64,@@EAG:b64:src/img/icons/enchanted_book.png:0@@)}

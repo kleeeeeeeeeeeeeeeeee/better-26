@@ -3,8 +3,8 @@
 
 Usage: python3 tools/panel_preview.py
 
-About 60 KB, so the panel's look can be checked or shared without the 75 MB game.
-It loads src/css/mc-ui.css (with its images and font inlined), 02b, 02f and 02c, and
+About 50 KB, so the panel's look can be checked or shared without the 75 MB game.
+It loads src/css/panel-ui.css (with its icons inlined), 02b, 02f and 02c, and
 opens the panel. Nothing in it talks to a server.
 """
 import base64
@@ -26,7 +26,7 @@ def expand(m):
 
 
 def main():
-    css = TOKEN_RE.sub(expand, (ROOT / "src/css/mc-ui.css").read_bytes()).decode()
+    css = TOKEN_RE.sub(expand, (ROOT / "src/css/panel-ui.css").read_bytes()).decode()
     js = lambda name: (ROOT / "src/js" / name).read_text(encoding="utf-8")
     page = (
         '<!doctype html><html><head><meta charset="utf-8">'
@@ -35,7 +35,7 @@ def main():
         "body{background:linear-gradient(#78a7ff 0 55%,#5d8f3a 55% 62%,#866043 62%)}"
         "#note{position:fixed;right:12px;bottom:12px;font:14px sans-serif;color:#fff;"
         "background:rgba(0,0,0,.5);padding:6px 10px}</style>"
-        '<style id="eag-mc-ui">' + css + "</style>"
+        '<style id="eag-panel-ui">' + css + "</style>"
         '<script>try{localStorage.setItem("eaglercraft26.perfPanel","open")}catch(e){}</script>'
         "<script>" + js("02b-m1-air-profile.js") + "</script>"
         "<script>" + js("02f-features.js") + "</script>"
