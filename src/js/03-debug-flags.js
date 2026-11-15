@@ -57,7 +57,7 @@
 				window.__eaglerRecoveredCrash = previousReport;
 				var journal = {
 					version: 2,
-					build: "1e2017e0712b3280",
+					build: "ea652f93b1b49f33",
 					sessionId: Date.now().toString(36) + "-" + Math.random().toString(36).slice(2),
 					startedAt: Date.now(),
 					heartbeat: Date.now(),
@@ -309,8 +309,8 @@
 		window.eaglercraftXOpts = {
 			container: "game_frame",
 			assetsURI: [
-				{ url: "assets.epk?v=1e2017e0712b3280", path: "" },
-				{ url: "sounds.epk?v=1e2017e0712b3280", path: "" }
+				{ url: "assets.epk?v=ea652f93b1b49f33", path: "" },
+				{ url: "sounds.epk?v=ea652f93b1b49f33", path: "" }
 			],
 			localesURI: "lang/",
 			worldsDB: "worlds",

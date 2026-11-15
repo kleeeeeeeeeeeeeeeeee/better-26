@@ -191,11 +191,36 @@ Display（清晰度滑块和 Auto）、Network（流量和连接）、Features�
   （纯客户端）。单人和局域网重编后就有；用户的 Paper 服务器要另写插件，消息格式和规则见 `jade/README.md`。
   一个提醒：我曾说“单人不需要插件，因为内置服务端在浏览器里”，这不对——它跑在独立的 worker 里，客户端读不到，
   所以也要发消息；只是服务端代码是我们自己编的，不用插件。
+- **最终版已编好并换进仓库（构建 `ea652f93b1b49f33`）**：含容器内容、熔炉、酿造台、唱片机、开关、坐标显示。
+  只做了启动检查（home、friends 都在 15 秒内就绪、无页面错误、开关对象存在），提示条和坐标的画面、新面板外观都
+  还没在浏览器里看过。
 - 用户说过：这类重编不要在容器里自己跑，要他同意；他的 MSI 只有 16GB，链接峰值要 11.4–11.9GB，
   又依赖 Linux 的 `/proc` 和 bash，实际跑不了。要重编先和用户商量在哪跑。
 - 现有 `local/` 目录被清空过一次，已从上次的构建里恢复 `local/home-server.json`（不含 `panel`）。
 - 打包时 `eaglercraft-26.2.html`（无 token 的普通版）要在 `local/home-server.json` 不存在时构建，否则
   会把 token 嵌进去。
+
+## 服务器推送资源包（“服务器当模组加载器”的基础）
+
+2026-11-15 实测：服务器 `server.properties` 设了 `resource-pack`，客户端确实收到推送（日志
+`ClientboundResourcePackPushPacket`、`server resource-pack push ... policy=ENABLED`），但**旧版游戏（构建
+`21b0a73c5a7f5526`）里会失败**：下载或命中缓存后调用 `Files.setLastModifiedTime`，浏览器版不支持，抛
+`UnsupportedOperationException`，整个包作废（`Pack 1 failed to download` / `Failed to store downloaded file`）。
+新版源码 `HttpUtil.updateModificationTime` 已经 catch 这个异常，只记警告。**新版上是否真的生效还没验证**。
+
+- 测试包：`server-packs/test-pack.zip`（只把泥土英文名改成 `Dirt [server pack OK]`，pack format 88，sha1
+  `58b1d1630015582b664076ae35afffed7ab5af43`），用 raw.githubusercontent.com 的分支地址托管，响应带
+  `access-control-allow-origin: *`。
+- 用户服务器现状：测试包替换了原来的 Borderless Glass 包，原配置备份在服务器的
+  `backups/server.properties.bak-before-testpack`。撤回：清空 `resource-pack`、`resource-pack-sha1` 后重启。
+- 游戏会按服务器条目记住“是否接受服务器资源包”（Multiplayer → Edit → Server Resource Packs），设成
+  Disabled 时静默拒绝。用户那里是 Enabled。
+- 查原因的方法：地址加 `?perfdebug`，**先**点 Record log **再**进服，进服那一刻的下载日志才录得到。
+
+Modrinth 上（2026-11-15 查）Fabric、26.2、`client_side:unsupported` 的模组 3739 个，`optional` 943 个；大头是世界
+生成（很多同时有数据包版，Paper 也能装），还有玩法类，以及靠 Polymer 库在服务端加新物品/方块/生物的 30 多个
+（Polymer 26.2 版 `0.17.5+26.2`）。用 Fabric 服务端就不能用 Paper 插件（AuthMe 要换同类 Fabric 模组）。都没在
+用户服务器上实际跑过。
 
 ## 和用户协作的约定
 
