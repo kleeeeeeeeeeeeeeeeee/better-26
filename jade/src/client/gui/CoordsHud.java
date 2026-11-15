@@ -10,8 +10,8 @@ import net.minecraft.world.entity.player.Player;
 /**
  * A small always-on coordinates readout: exact position, the block the player stands in
  * and the direction the player faces. Switched on and off, and moved between the four
- * corners, from the page's feature panel. Hidden while the F3 debug screen is open,
- * because that already shows the same numbers.
+ * corners, from the page's feature panel. Stays visible while chat or a menu is open;
+ * hidden while the F3 debug screen is open, because that already shows the same numbers.
  */
 public final class CoordsHud {
    private static final int MARGIN = 4;
@@ -24,7 +24,8 @@ public final class CoordsHud {
 
    public static void extractRenderState(final Minecraft minecraft, final GuiGraphicsExtractor graphics) {
       Player player = minecraft.player;
-      if (player == null || minecraft.level == null || minecraft.gui.screen() != null
+      // Stays on while chat or the pause menu is open, like the vanilla F3 numbers.
+      if (player == null || minecraft.level == null
          || minecraft.debugEntries.isOverlayVisible() || !ClientFeatures.coords()) {
          return;
       }

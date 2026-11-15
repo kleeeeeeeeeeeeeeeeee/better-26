@@ -134,7 +134,8 @@ Display（清晰度滑块和 Auto）、Network（流量和连接）、Features�
 **Features 标签**：开关 Jade 提示条、坐标显示，选坐标显示在哪个角（左上、右上、左下、右下）。状态在
 `window.__eaglerFeatures`（`jade`、`coords`、`coordsPos`），由 `02f-features.js` 创建，所有构建都带（包括没有面板的
 朋友版，那时全部默认开）。游戏源码里 `ClientFeatures`（`@JSBody`）每帧读它，所以**开关要游戏本体是新编译的版本才有
-效果**；旧游戏不认这个对象，开关不起作用。坐标显示是 `CoordsHud`（精确坐标、所在方块、朝向），F3 调试屏幕打开时不画。
+效果**；旧游戏不认这个对象，开关不起作用。坐标显示是 `CoordsHud`（精确坐标、所在方块、朝向），F3 调试屏幕打开时不画。用户反映打字（聊天框）和按 ESC 时坐标会消失，
+原因是最初写了“有界面打开就不画”；源码已改成界面打开时照常画（`jade/src/client/gui/CoordsHud.java`），**只编译检查过，还没重编进游戏**。
 这两个类的源码在 `jade/src/client/gui/`。
 
 `src/js/02c-perf-panel.js`。左上角的帧率小标签可以拖动，点击展开面板（界面是英文）：
