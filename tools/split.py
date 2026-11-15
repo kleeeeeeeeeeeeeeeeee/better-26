@@ -39,6 +39,7 @@ SCRIPT_NAMES = [
     "02c-perf-panel.js",
     "02d-home-server.js",
     "02e-mac-shortcuts.js",
+    "02f-features.js",
     "03-debug-flags.js",
     "04-teavm-wasmgc-runtime.js",
     "05-worker-bootstrap.js",

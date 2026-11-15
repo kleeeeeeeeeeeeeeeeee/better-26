@@ -14,6 +14,7 @@ base64 数据块；为了便于阅读和修改代码，仓库里保存的是拆�
   - `02c-perf-panel.js` — 屏幕左上角的性能面板（后加的）
   - `02d-home-server.js` — 自建服务器预设（后加的，见下文）
   - `02e-mac-shortcuts.js` — Mac 上把 Command+A/C/V/X 转成 Control 版本（后加的）
+  - `02f-features.js` — 游戏内置功能的开关（Jade 提示条、坐标显示），状态存在 localStorage，游戏每帧读取（后加的）
   - `03-debug-flags.js` — URL 调试参数与诊断开关
   - `04-teavm-wasmgc-runtime.js` — TeaVM Wasm-GC 运行时（已压缩）
   - `05-worker-bootstrap.js` — 页面与 worker 共用的 Wasm-GC 启动逻辑
@@ -111,6 +112,17 @@ Record log 的头部写着设备配置和 GPU。**所有数字都没在这台真
 上用 Record log 录一段（可分别试 `?pc=0` 和默认）再调。
 
 ## 性能面板
+
+**2026-11-15 重新设计了界面**：深色圆角卡片，四个标签页——Stats（帧时间曲线、GPU、区块网格、电量、游玩时长）、
+Display（清晰度滑块和 Auto）、Network（流量和连接）、Features（开关）；底部固定 Fullscreen 和 Record log。
+当前标签记在 localStorage `eaglercraft26.perfPanel.tab`。数据逻辑（测量、Auto、录日志）没有改，只换了界面结构。
+**只在 Node 里用假的 DOM 把构建流程和所有点击处理跑过，没有在真实浏览器里看过外观**，位置、间距、字体可能还要调。
+
+**Features 标签**：开关 Jade 提示条、坐标显示，选坐标显示在哪个角（左上、右上、左下、右下）。状态在
+`window.__eaglerFeatures`（`jade`、`coords`、`coordsPos`），由 `02f-features.js` 创建，所有构建都带（包括没有面板的
+朋友版，那时全部默认开）。游戏源码里 `ClientFeatures`（`@JSBody`）每帧读它，所以**开关要游戏本体是新编译的版本才有
+效果**；旧游戏不认这个对象，开关不起作用。坐标显示是 `CoordsHud`（精确坐标、所在方块、朝向），F3 调试屏幕打开时不画。
+这两个类的源码在 `jade/src/client/gui/`。
 
 `src/js/02c-perf-panel.js`。左上角的帧率小标签可以拖动，点击展开面板（界面是英文）：
 

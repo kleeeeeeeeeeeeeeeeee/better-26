@@ -15,6 +15,8 @@ Jade 用的 Mixin。
 - `src/` — 新增的 Java 文件，按 `game/src/main/java/net/minecraft/` 下的相对路径放进工作区：
   - `client/gui/JadeHud.java` — 画提示条（名字、图标、模组名、各类行）
   - `client/gui/JadeLiteClient.java` — 向服务器请求方块内部数据，保存最新答复
+  - `client/gui/ClientFeatures.java` — 每帧读页面里的开关 `globalThis.__eaglerFeatures`（`@JSBody`）
+  - `client/gui/CoordsHud.java` — 坐标显示（精确 XYZ、所在方块、朝向），可放四个角，F3 打开时不画
   - `server/JadeLiteServer.java` — 服务端：收到请求，读方块里的东西，打包回复
   - `network/protocol/common/custom/JadeLite{Request,Data}Payload.java` — 两种自定义消息
 - `game.patch` — 对原有文件的改动（用 `git apply` 套进工作区）：把两种消息注册进客户端/服务端的

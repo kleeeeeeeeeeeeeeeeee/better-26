@@ -69,9 +69,6 @@ public final class JadeHud {
    private static final int ITEMS_PER_ROW = 9;
    private static final int MAX_ITEM_ROWS = 3;
 
-   /** Master switch for the tooltip. */
-   public static boolean enabled = true;
-
    private JadeHud() {
    }
 
@@ -292,7 +289,7 @@ public final class JadeHud {
    // ---- Frame ----
 
    public static void extractRenderState(final Minecraft minecraft, final GuiGraphicsExtractor graphics) {
-      if (!enabled || minecraft.level == null || minecraft.player == null || minecraft.gui.screen() != null) {
+      if (!ClientFeatures.jade() || minecraft.level == null || minecraft.player == null || minecraft.gui.screen() != null) {
          return;
       }
       Info info = gather(minecraft);

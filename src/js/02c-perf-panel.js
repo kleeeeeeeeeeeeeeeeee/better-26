@@ -3,7 +3,9 @@
  * On-screen performance panel.
  *
  * A small pill shows the frame rate; drag it to move it, click it to open the
- * panel. The panel has:
+ * panel. The panel has four tabs (Stats, Display, Network, Features) and a footer
+ * with the fullscreen and log buttons. Features holds the switches for things built
+ * into the game (see 02f-features.js). Together the tabs have:
  *   - a 30 second frame time graph
  *   - frame time, canvas resolution, GPU in use and device profile state
  *   - counters of the chunk meshing pipeline (workers, queue, errors)
@@ -281,10 +283,16 @@
 		node.addEventListener("click", function (ev) { ev.preventDefault(); action(); });
 		return node;
 	}
-	var BUTTON_CSS = "flex:1;text-align:center;padding:3px 6px;border-radius:3px;"
-		+ "border:1px solid rgba(255,255,255,0.35);white-space:nowrap";
+	var ACCENT = "#4da3ff";
+	var PANEL_W = 268;
+	var GRAPH_W = PANEL_W - 24;
+	var BUTTON_CSS = "flex:1;text-align:center;padding:5px 8px;border-radius:6px;"
+		+ "background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.16);white-space:nowrap";
+	var TAB_KEY = "eaglercraft26.perfPanel.tab";
+	var TABS = [["stats", "Stats"], ["display", "Display"], ["net", "Network"], ["features", "Features"]];
 
 	var root, pill, body, graph, rows = {}, slider, scaleLabel, autoButton;
+	var pages = {}, tabButtons = {}, cur = null, tab = "stats";
 	var open = load(KEY) === "open";
 	var storedAuto = load(AUTO_KEY);
 	var deviceProfile = window.__eaglerM1Profile || {};
@@ -306,17 +314,58 @@
 		scale.set(value >= nativeRatio() - 0.001 ? null : value, temporary);
 	}
 
+	// Rows and sections are added to the page being built.
 	function section(title) {
-		body.appendChild(el("div", "margin-top:7px;padding-top:5px;border-top:1px solid rgba(255,255,255,0.18);"
-			+ "opacity:0.7", title));
+		cur.appendChild(el("div", "margin:11px 0 4px;font-size:10px;letter-spacing:1px;text-transform:uppercase;"
+			+ "color:" + ACCENT, title));
 	}
 	function row(key, label) {
-		var line = el("div", "display:flex;justify-content:space-between;gap:14px");
-		line.appendChild(el("span", "opacity:0.7", label));
+		var line = el("div", "display:flex;justify-content:space-between;gap:14px;padding:1px 0");
+		line.appendChild(el("span", "opacity:0.6", label));
 		rows[key] = el("span", "text-align:right");
 		rows[key + "Line"] = line;
 		line.appendChild(rows[key]);
-		body.appendChild(line);
+		cur.appendChild(line);
+	}
+	function note(text) {
+		cur.appendChild(el("div", "font-size:10px;line-height:1.4;opacity:0.55;margin:2px 0 4px", text));
+	}
+
+	// A labelled on/off switch. get() reads the current value, set(value) stores it.
+	function toggle(label, hint, get, set) {
+		var line = el("div", "display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 0");
+		var text = el("div", "min-width:0");
+		text.appendChild(el("div", "font-size:12px", label));
+		if (hint) text.appendChild(el("div", "font-size:10px;line-height:1.4;opacity:0.55;margin-top:1px", hint));
+		line.appendChild(text);
+		var track = el("div", "flex:none;position:relative;width:34px;height:18px;border-radius:9px;"
+			+ "transition:background 0.15s");
+		var knob = el("div", "position:absolute;top:2px;width:14px;height:14px;border-radius:50%;"
+			+ "background:#fff;transition:left 0.15s");
+		track.appendChild(knob);
+		function paint() {
+			var on = !!get();
+			track.style.background = on ? ACCENT : "rgba(255,255,255,0.22)";
+			knob.style.left = on ? "18px" : "2px";
+		}
+		clickable(track, function () { set(!get()); paint(); });
+		paint();
+		line.appendChild(track);
+		cur.appendChild(line);
+	}
+
+	function showTab(name) {
+		tab = pages[name] ? name : "stats";
+		TABS.forEach(function (entry) {
+			var active = entry[0] === tab;
+			pages[entry[0]].style.display = active ? "block" : "none";
+			tabButtons[entry[0]].style.color = active ? "#fff" : "rgba(255,255,255,0.55)";
+			tabButtons[entry[0]].style.borderBottomColor = active ? ACCENT : "transparent";
+			tabButtons[entry[0]].style.background = active ? "rgba(255,255,255,0.06)" : "transparent";
+		});
+		save(TAB_KEY, tab);
+		update();
+		fit();
 	}
 
 	function setOpen(value) {
@@ -337,18 +386,153 @@
 		root.style.top = top + "px";
 	}
 
+	function buildStatsPage() {
+		cur = pages.stats;
+		graph = el("canvas", "display:block;width:" + GRAPH_W + "px;height:46px;margin-bottom:6px;"
+			+ "background:rgba(255,255,255,0.05);border-radius:6px");
+		graph.title = "Slowest frame in each half second, last 30 seconds. The line marks 60 FPS.";
+		cur.appendChild(graph);
+
+		row("frame", "Worst frame");
+		row("game", "Game frame");
+		row("res", "Resolution");
+		row("gpu", "GPU");
+		row("m1", "Profile");
+
+		// Chunk meshing pipeline, for diagnosing terrain that stays invisible.
+		section("Chunk meshing");
+		row("mesh", "Workers");
+		row("meshQueue", "Waiting");
+		row("meshFlight", "In progress");
+		row("meshDone", "Built");
+		row("meshInline", "Built inline");
+		row("meshErrors", "Errors");
+
+		section("System");
+		row("battery", "Battery");
+		rows.batteryLine.style.display = "none";
+		row("time", "Play time");
+	}
+
+	function buildDisplayPage() {
+		cur = pages.display;
+		section("Render scale");
+		if (!scale) {
+			note("Render scale control is not available in this browser.");
+			return;
+		}
+		note("Lower scale draws fewer pixels, which is faster. Auto lowers it while the frame rate is low.");
+		var line = el("div", "display:flex;align-items:center;gap:10px;margin-top:6px");
+		slider = el("input", "flex:1;min-width:0;margin:0");
+		slider.type = "range";
+		slider.min = "0.5";
+		slider.step = "0.25";
+		slider.tabIndex = -1;
+		var top = Math.max(0.5, Math.ceil(nativeRatio() * 4) / 4);
+		slider.max = String(top);
+		var stored = scale.get();
+		slider.value = String(stored === null ? top : Math.min(stored, top));
+		// Never keep keyboard focus: arrow keys belong to the game.
+		function release() { try { slider.blur(); } catch (e) {} }
+		slider.addEventListener("input", function () {
+			applyScale(chosenScale(), false);
+			if (auto) auto.reset();
+			update();
+		});
+		slider.addEventListener("change", release);
+		slider.addEventListener("pointerup", release);
+		line.appendChild(slider);
+		scaleLabel = el("span", "min-width:48px;text-align:right");
+		line.appendChild(scaleLabel);
+		cur.appendChild(line);
+
+		var autoLine = el("div", "display:flex;gap:8px;margin-top:8px;align-items:center");
+		autoButton = clickable(el("div", BUTTON_CSS, "Auto"), function () {
+			autoOn = !autoOn;
+			save(AUTO_KEY, autoOn ? "on" : "off");
+			if (autoOn) auto.reset(); else applyScale(chosenScale(), false);
+			update();
+		});
+		autoButton.style.flex = "0 0 70px";
+		autoButton.title = "Lower the scale while the frame rate is low, raise it back when steady";
+		autoLine.appendChild(autoButton);
+		rows.autoState = el("span", "flex:1;opacity:0.6;text-align:right");
+		autoLine.appendChild(rows.autoState);
+		cur.appendChild(autoLine);
+
+		auto = createAuto({
+			// On a screen at ratio 1 the scale is already 1x, so the automatic mode needs
+			// room below it; on a high-density screen 1x is the floor.
+			floor: nativeRatio() <= 1.001 ? 0.75 : 1,
+			ceiling: chosenScale,
+			apply: function (value) { applyScale(value, true); }
+		});
+		if (autoOn) auto.reset();
+	}
+
+	function buildNetworkPage() {
+		cur = pages.net;
+		section("Traffic");
+		row("down", "Download");
+		row("up", "Upload");
+		row("conn", "Connection");
+		note("The warning NO DATA appears on the top label when nothing has arrived for 5 seconds.");
+	}
+
+	var CORNER_NAMES = [["tl", "Top left"], ["tr", "Top right"], ["bl", "Bottom left"], ["br", "Bottom right"]];
+
+	function buildFeaturesPage() {
+		cur = pages.features;
+		var features = window.__eaglerFeatures;
+		var set = window.__eaglerFeatureSet;
+		section("In the game");
+		if (!features || typeof set !== "function") {
+			note("This build has no feature switches.");
+			return;
+		}
+		toggle("Jade tooltip", "What you are looking at: name, crop growth, health. Chest, furnace and similar"
+			+ " details need a server that supports them.",
+			function () { return features.jade; }, function (value) { set("jade", value); });
+		toggle("Coordinates", "Position, block and facing direction. Hidden while the F3 screen is open.",
+			function () { return features.coords; }, function (value) { set("coords", value); });
+
+		cur.appendChild(el("div", "font-size:12px;margin:8px 0 5px", "Coordinates corner"));
+		var grid = el("div", "display:grid;grid-template-columns:1fr 1fr;gap:6px");
+		var corners = {};
+		function paintCorners() {
+			CORNER_NAMES.forEach(function (entry) {
+				var on = features.coordsPos === entry[0];
+				corners[entry[0]].style.background = on ? ACCENT : "rgba(255,255,255,0.08)";
+				corners[entry[0]].style.borderColor = on ? ACCENT : "rgba(255,255,255,0.16)";
+			});
+		}
+		CORNER_NAMES.forEach(function (entry) {
+			corners[entry[0]] = clickable(el("div", BUTTON_CSS, entry[1]), function () {
+				set("coordsPos", entry[0]);
+				paintCorners();
+			});
+			corners[entry[0]].style.flex = "none";
+			grid.appendChild(corners[entry[0]]);
+		});
+		paintCorners();
+		cur.appendChild(grid);
+		note("Changes apply at once and are remembered in this browser.");
+	}
+
 	function build() {
 		scale = window.__eaglerRenderScale && window.__eaglerRenderScale.available ? window.__eaglerRenderScale : null;
 		var pos = null;
 		try { pos = JSON.parse(load(POS_KEY)); } catch (e) {}
 		root = el("div", "position:fixed;z-index:2147483645;color:#fff;"
-			+ "font:11px/1.5 Menlo,Consolas,monospace;user-select:none;-webkit-user-select:none");
+			+ "font:11px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;"
+			+ "user-select:none;-webkit-user-select:none");
 		root.id = "eag_perf_panel";
 		root.style.left = (pos && pos.x >= 0 ? pos.x : 6) + "px";
 		root.style.top = (pos && pos.y >= 0 ? pos.y : 6) + "px";
 
-		pill = el("div", "display:inline-block;padding:2px 7px;border-radius:4px;cursor:grab;"
-			+ "background:rgba(0,0,0,0.55);touch-action:none", "-- FPS");
+		pill = el("div", "display:inline-block;padding:3px 10px;border-radius:999px;cursor:grab;"
+			+ "background:rgba(14,16,22,0.72);border:1px solid rgba(255,255,255,0.14);touch-action:none;"
+			+ "font-variant-numeric:tabular-nums", "-- FPS");
 		pill.title = "Click to open, drag to move";
 		root.appendChild(pill);
 
@@ -386,89 +570,29 @@
 			pill.addEventListener("pointercancel", end);
 		})();
 
-		body = el("div", "margin-top:4px;padding:7px 9px;border-radius:4px;width:214px;"
-			+ "background:rgba(0,0,0,0.78)");
+		body = el("div", "margin-top:6px;width:" + PANEL_W + "px;border-radius:12px;overflow:hidden;"
+			+ "background:rgba(14,16,22,0.92);border:1px solid rgba(255,255,255,0.12);"
+			+ "box-shadow:0 10px 30px rgba(0,0,0,0.5)");
 
-		graph = el("canvas", "display:block;width:214px;height:46px;margin-bottom:5px;"
-			+ "background:rgba(255,255,255,0.06);border-radius:3px");
-		graph.title = "Slowest frame in each half second, last 30 seconds. The line marks 60 FPS.";
-		body.appendChild(graph);
+		var tabbar = el("div", "display:flex;border-bottom:1px solid rgba(255,255,255,0.1)");
+		var host = el("div", "padding:10px 12px;max-height:min(58vh,430px);overflow-y:auto");
+		TABS.forEach(function (entry) {
+			pages[entry[0]] = el("div", "display:none");
+			host.appendChild(pages[entry[0]]);
+			var button = clickable(el("div", "flex:1;text-align:center;padding:8px 0 7px;font-size:11px;"
+				+ "letter-spacing:0.3px;border-bottom:2px solid transparent", entry[1]), function () { showTab(entry[0]); });
+			tabButtons[entry[0]] = button;
+			tabbar.appendChild(button);
+		});
+		body.appendChild(tabbar);
+		body.appendChild(host);
 
-		row("frame", "Worst frame");
-		row("game", "Game frame");
-		row("res", "Resolution");
-		row("gpu", "GPU");
-		row("m1", "Profile");
+		buildStatsPage();
+		buildDisplayPage();
+		buildNetworkPage();
+		buildFeaturesPage();
 
-		// Chunk meshing pipeline, for diagnosing terrain that stays invisible.
-		section("Chunk meshing");
-		row("mesh", "Workers");
-		row("meshQueue", "Waiting");
-		row("meshFlight", "In progress");
-		row("meshDone", "Built");
-		row("meshInline", "Built inline");
-		row("meshErrors", "Errors");
-
-		if (scale) {
-			section("Render scale");
-			var line = el("div", "display:flex;align-items:center;gap:8px;margin-top:2px");
-			slider = el("input", "flex:1;min-width:0;margin:0");
-			slider.type = "range";
-			slider.min = "0.5";
-			slider.step = "0.25";
-			slider.tabIndex = -1;
-			var top = Math.max(0.5, Math.ceil(nativeRatio() * 4) / 4);
-			slider.max = String(top);
-			var stored = scale.get();
-			slider.value = String(stored === null ? top : Math.min(stored, top));
-			// Never keep keyboard focus: arrow keys belong to the game.
-			function release() { try { slider.blur(); } catch (e) {} }
-			slider.addEventListener("input", function () {
-				applyScale(chosenScale(), false);
-				if (auto) auto.reset();
-				update();
-			});
-			slider.addEventListener("change", release);
-			slider.addEventListener("pointerup", release);
-			line.appendChild(slider);
-			scaleLabel = el("span", "min-width:44px;text-align:right");
-			line.appendChild(scaleLabel);
-			body.appendChild(line);
-
-			var autoLine = el("div", "display:flex;gap:4px;margin-top:4px");
-			autoButton = clickable(el("div", BUTTON_CSS, "Auto"), function () {
-				autoOn = !autoOn;
-				save(AUTO_KEY, autoOn ? "on" : "off");
-				if (autoOn) auto.reset(); else applyScale(chosenScale(), false);
-				update();
-			});
-			autoButton.title = "Lower the scale while the frame rate is low, raise it back when steady";
-			autoLine.appendChild(autoButton);
-			rows.autoState = el("span", "flex:2;align-self:center;opacity:0.7;text-align:right");
-			autoLine.appendChild(rows.autoState);
-			body.appendChild(autoLine);
-
-			auto = createAuto({
-				// On a screen at ratio 1 the scale is already 1x, so the automatic mode needs
-				// room below it; on a high-density screen 1x is the floor.
-				floor: nativeRatio() <= 1.001 ? 0.75 : 1,
-				ceiling: chosenScale,
-				apply: function (value) { applyScale(value, true); }
-			});
-			if (autoOn) auto.reset();
-		}
-
-		section("Network");
-		row("down", "Download");
-		row("up", "Upload");
-		row("conn", "Connection");
-
-		section("System");
-		row("battery", "Battery");
-		rows.batteryLine.style.display = "none";
-		row("time", "Play time");
-
-		var buttons = el("div", "display:flex;gap:4px;margin-top:7px");
+		var buttons = el("div", "display:flex;gap:8px;padding:8px 12px 10px;border-top:1px solid rgba(255,255,255,0.1)");
 		buttons.appendChild(clickable(el("div", BUTTON_CSS, "Fullscreen"), function () {
 			try {
 				if (document.fullscreenElement || document.webkitFullscreenElement) {
@@ -495,6 +619,7 @@
 		});
 		document.body.appendChild(root);
 		body.style.display = open ? "block" : "none";
+		showTab(load(TAB_KEY) || "stats");
 
 		// The game puts #game_frame into fullscreen; elements outside it disappear.
 		function follow() {
@@ -593,7 +718,7 @@
 
 	function drawGraph() {
 		var ratio = Math.min(nativeRatio(), 2);
-		var w = 214, h = 46;
+		var w = GRAPH_W, h = 46;
 		if (graph.width !== Math.round(w * ratio)) {
 			graph.width = Math.round(w * ratio);
 			graph.height = Math.round(h * ratio);
