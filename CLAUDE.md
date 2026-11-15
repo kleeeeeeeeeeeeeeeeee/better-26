@@ -204,7 +204,7 @@ Display（清晰度滑块和 Auto）、Network（流量和连接）、Features�
 
 `server-plugin/jadelite/`，成品 `release/jadelite-1.0.0.jar`，说明见那里的 README。回答 `jadelite:req`，格式与游戏内置
 服务端一致。要点：Paper 只给客户端登记过的频道发消息，Eaglercraft 客户端不登记，所以插件在玩家进服时用反射调用
-`addChannel`。只编译、对照 Paper 源码检查过，**没在真正的 Paper 上跑过**（容器里起 Paper 被权限规则拦了）。
+`addChannel`。**2026-11-15 已装到用户的 Paper 服务器上，用户确认在服务器里能看到容器内容**（反射 `addChannel` 在 Paper 26.2 上有效）。
 客户端发 3 次没收到答复就不再问，所以装好插件后玩家要重新进服一次。
 
 ## 服务器推送资源包（“服务器当模组加载器”的基础）

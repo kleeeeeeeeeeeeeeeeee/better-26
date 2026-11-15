@@ -13,6 +13,5 @@
   `addChannel("jadelite:data")`（Paper 26.2 里是 `PluginMessageBridgeImpl` 的默认方法，客户端发
   `minecraft:register` 时 Paper 自己调用的也是它），对照 Paper `ver/26.2` 分支的源码确认过。反射失败时日志会有
   一条警告，提示条就收不到答复。
-- **没有在真正的 Paper 服务器上运行过**：在容器里起 Paper 服务器被权限规则拦下了。只确认了能编译、
-  用到的 Paper 接口在 26.2 开发包里都存在、反射的方法名对得上源码。
+- 2026-11-15 装到用户的 Paper 26.2 服务器上，用户确认在服务器里能看到容器内容。
 - 许可：参照 Jade（https://github.com/Snownee/Jade ，CC BY-NC-SA 4.0）的服务端数据提供逻辑，只能非商用。
