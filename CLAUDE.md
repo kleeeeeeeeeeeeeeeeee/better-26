@@ -280,6 +280,9 @@ Modrinth 上（2026-11-15 查）Fabric、26.2、`client_side:unsupported` 的模
   60 万次 + AES-GCM），输出加密写法的 JSON。这样 token 和密码都不用经过对话
 - 两种写法都可以再加 `"panel": false`：这样构建出来的文件没有性能面板，也不显示启动时
   的 M1 横幅（渲染分辨率和 mesh worker 的调整照常生效）。给用户朋友的版本用这个
+- 还可以加 `"features": {"coords": false}`（也可以是 `jade`、`coordsPos`）改这个构建里内置功能的默认值，`02f-features.js` 读它。
+  没有面板的朋友版没法在游戏里切回去，所以要关什么就在这里关。玩家在面板里保存过的选择优先于它。
+  **2026-11-16 起给朋友的版本是 `"panel": false` 加 `"features": {"coords": false}`**：用户要求关掉朋友的坐标，Jade 仍然开着
 - `build.py` 的 `@@EAG:json:<路径>@@` 占位符：文件存在就内联成 JSON，不存在就是 `null`。
   模板里用它给 `window.__eaglerHomeServer` 赋值
 - `02d-home-server.js`：启动前把这个 relay 写进 localStorage 的

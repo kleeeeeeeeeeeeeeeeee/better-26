@@ -11,13 +11,23 @@
  *   coordsPos  its corner: "tl", "tr", "bl" or "br"
  *
  * This script runs in every build, including the ones without the panel, so the
- * defaults (everything on) always apply.
+ * defaults (everything on, unless the build's local configuration says otherwise) always apply.
  */
 (function () {
 	"use strict";
 	var KEY = "eaglercraft26.features";
 	var CORNERS = { tl: 1, tr: 1, bl: 1, br: 1 };
 	var state = { jade: true, coords: true, coordsPos: "tl" };
+	// A build can change the defaults with "features" in its local configuration
+	// (local/home-server.json), e.g. {"features": {"coords": false}} for a build without
+	// the panel, where the player cannot switch things back on. A choice the player has
+	// saved in the panel still wins.
+	var preset = window.__eaglerHomeServer && window.__eaglerHomeServer.features;
+	if (preset && typeof preset === "object") {
+		if (typeof preset.jade === "boolean") state.jade = preset.jade;
+		if (typeof preset.coords === "boolean") state.coords = preset.coords;
+		if (CORNERS[preset.coordsPos] === 1) state.coordsPos = preset.coordsPos;
+	}
 	try {
 		var saved = JSON.parse(localStorage.getItem(KEY) || "null");
 		if (saved && typeof saved === "object") {
