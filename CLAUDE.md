@@ -7,18 +7,23 @@ base64 数据块；为了便于阅读和修改代码，仓库里保存的是拆�
 ## 目录结构
 
 - `src/index.template.html` — HTML 骨架，被拆出去的内容在原位置换成占位符
-- `src/js/` — 8 段内联脚本，按在页面中出现的顺序编号
+- `src/js/` — 9 段内联脚本，按在页面中出现的顺序编号
   - `01-brotli-decoder.js` — Brotli 解码器（已压缩，不可读）
   - `02-inline-payload-loader.js` — 内联数据块的加载与 fetch 拦截
-  - `02b-m1-air-profile.js` — 渲染分辨率控制与 MacBook Air M1 性能配置（后加的）
+  - `02b-m1-air-profile.js` — 渲染分辨率控制，以及 MacBook Air M1 和 Intel 核显笔电两套性能配置（后加的）
   - `02c-perf-panel.js` — 屏幕左上角的性能面板（后加的）
-  - `02d-home-server.js` — 自建服务器预设（后加的，见下文，尚未验证）
+  - `02d-home-server.js` — 自建服务器预设（后加的，见下文）
+  - `02e-mac-shortcuts.js` — Mac 上把 Command+A/C/V/X 转成 Control 版本（后加的）
+  - `02f-features.js` — 游戏内置功能的开关（Jade 提示条、坐标显示），状态存在 localStorage，游戏每帧读取（后加的）
+  - `02g-coords-overlay.js` — 坐标显示，由页面根据游戏每帧递来的 `window.__eaglerGame` 画（后加的）
   - `03-debug-flags.js` — URL 调试参数与诊断开关
   - `04-teavm-wasmgc-runtime.js` — TeaVM Wasm-GC 运行时（已压缩）
   - `05-worker-bootstrap.js` — 页面与 worker 共用的 Wasm-GC 启动逻辑
   - `06-main.js` — 主入口（`type="module"`）
 - `src/css/style.css` — 加载界面、横屏提示等样式
-- `src/img/` — 页面图标 `icon.png` 和启动图 `boot.png`
+- `src/css/panel-ui.css` — 性能面板用的物品小图标（后加的）。用 `@@EAG:b64:...@@` 内嵌 `src/img/icons/` 里的
+  图片；`build.py` 会展开插入的 `.css` 文件里的占位符（只对 `.css`）
+- `src/img/icons/` — 游戏自带的 16×16 物品贴图：红石粉（菜单按钮）、时钟、望远镜、末影珍珠、附魔书（标签页）
 - `payloads/` — 6 个二进制数据块（原文件中是 base64）
   - `decoder.wasm` — Brotli 解码器的 WASM
   - `client.wasm.br` / `mesh.wasm.br` / `server.wasm.br` — Brotli 压缩的游戏 WASM
@@ -30,6 +35,8 @@ base64 数据块；为了便于阅读和修改代码，仓库里保存的是拆�
   可直接作为 26.2 Java 服务端的 `world`。游戏里的 “Convert to Vanilla” 按钮在源码里是
   写死禁用的，所以用这个脚本代替。用用户的真实存档跑过：6623 个地形区块的坐标和
   `DataVersion`（4903，即 26.2）全部核对一致；还没在真正的 26.2 服务端上加载过
+- `tools/encrypt-token.html` — 独立页面，本地用密码加密 relay token，见“自建服务器预设”
+- `tools/panel_preview.py` — 生成 `dist/panel-preview.html`（约 50KB，只有面板没有游戏），改面板外观后用它看效果或发给用户
 - `tools/connection-test.html` — 独立的连接测试页，在目标网络下用浏览器打开，检查能否连到
   内置 relay、trycloudflare.com 以及用户自己的服务器地址
 - `dist/` — 构建输出，已加入 `.gitignore`
@@ -78,7 +85,58 @@ URL 参数：`?m1=1` 强制开启，`?m1=0` 关闭，`?renderscale=N` 调整分�
 上限 4 对上限 2，清晰度都是 1.5x）：两者都在 2–3 秒内回到 60 帧，没有明显差别；上限 4
 开头掉到过 30 以下，上限 2 最低 30。所以保持上限 2。由于加了这个文件，`build.py` 现在会报告与原文件不同，属于预期。
 
+## Intel 核显笔电配置（用户的 MSI）
+
+用户家里跑服务器的那台 Windows 笔电：i5-13420H（4 性能核 + 4 能效核，12 线程）、16GB 内存、
+1920×1080、缩放 100%。另一个助手用 Claude 自带浏览器读到显卡是 Intel UHD Graphics，但用户
+的 Chrome 实际用哪块显卡没确认；这个型号的笔电常见还带 NVIDIA 独显，Chrome 可能只是被
+Windows 的“图形设置”分到了核显。
+
+`02b` 里的 `detectPC()`：Windows + `hardwareConcurrency === 12` + WebGL 报告的 GPU 名含
+Intel UHD/Iris/HD/Xe 时命中（浏览器读不到 CPU 型号，所以只能这样判断）。命中后：
+
+- 渲染分辨率上限默认 1（这台机器缩放 100% 时没有变化，但以后调了 Windows 缩放也不会让
+  像素数跟着涨）
+- 把 `navigator.hardwareConcurrency` 报告为 4，mesh worker 上限 2（这台机器同时跑着 Paper
+  服务端、relay、隧道，少占一点 CPU；这是推断，没有对比测过）
+- 面板的 Auto 清晰度默认开（没有保存过选择时）
+  （Auto 的下限：屏幕缩放比为 1 时是 0.75，高密度屏是 1。用户在 1080p 100% 的屏幕上实测
+  命中配置后画面显示 `now 1x`，原来下限是 1，Auto 在这种屏幕上什么都做不了，所以改了）
+- 带面板的版本启动时顶部显示 18 秒的横幅，写明用的是哪块 GPU，并提示“如果这台笔电还有
+  NVIDIA 独显，去 Windows 设置 → 系统 → 屏幕 → 图形里把 Chrome 设成高性能，重启 Chrome”
+
+探测显卡用的 WebGL 上下文和游戏一样请求 `powerPreference: "high-performance"`（游戏的上下文
+就是这么建的），这样双显卡笔电上报告的是游戏实际会用的那块。用户 2026-11-14 确认任务管理器
+里有 GPU 0 和 GPU 1，已经把 Chrome 加进 Windows 图形设置，但面板仍显示 Intel UHD，原因待查
+（Chrome 没有完全退出重开、设置不是“高性能”，或加错了 chrome.exe）。
+
+`?pc=1` 强制开，`?pc=0` 关。Chrome 用独显时 GPU 名不含 Intel，不会命中，也就没有这套限制。
+面板新增 GPU 一行（整合显卡标黄、悬停有提示）和“Profile”一行（Intel PC / M1 Air / off），
+Record log 的头部写着设备配置和 GPU。**所有数字都没在这台真机上测过**，等用户在 Windows
+上用 Record log 录一段（可分别试 `?pc=0` 和默认）再调。
+
 ## 性能面板
+
+**2026-11-15 定稿的界面（第三版）**：用户试了一版完全 Minecraft 化的面板（原版按钮/标签/滑块贴图、Monocraft 像素
+字体、提示框底色），觉得不如第一版好看，要求退回第一版再重新设计，“酷、符合他的风格，但要和 MC 搭”。现在是：
+第一版的深色半透明卡片和普通字体，圆角收小（卡片 6px、按钮 3px），开关滑块和小节标题用 MC 绿 `#5BD45B`，警告用
+MC 的黄 `#FFFF55`、红 `#FF5555`，开关的圆钮改成小方块；标签页 Stats、Video、Network、Mods 前面各有一个游戏物品
+图标（时钟、望远镜、末影珍珠、附魔书）。**左上角的菜单按钮是一个圆形，里面是红石粉图标，不显示帧率**：用户反映
+游戏自带的帧率和面板的帧率同时出现、数值总有偏差（游戏数“一整秒画了多少帧”、每秒更新；面板用
+requestAnimationFrame 间隔估、每半秒更新）。连接没数据或正在录日志时，按钮变成胶囊形，图标旁加红字。面板内部仍用
+自己的测量（帧时间曲线、Auto）。用 `tools/panel_preview.py` 生成的预览页在无头浏览器里截图核对过外观；没在真机上看过。
+不要再改回像素字体和原版贴图那一版。
+
+之前的版本（同日）：深色圆角卡片，四个标签页——Stats（帧时间曲线、GPU、区块网格、电量、游玩时长）、
+Display（清晰度滑块和 Auto）、Network（流量和连接）、Features（开关）；底部固定 Fullscreen 和 Record log。
+当前标签记在 localStorage `eaglercraft26.perfPanel.tab`。数据逻辑（测量、Auto、录日志）没有改，只换了界面结构。
+**只在 Node 里用假的 DOM 把构建流程和所有点击处理跑过，没有在真实浏览器里看过外观**，位置、间距、字体可能还要调。
+
+**Features 标签**：开关 Jade 提示条、坐标显示，选坐标显示在哪个角（左上、右上、左下、右下）。状态在
+`window.__eaglerFeatures`（`jade`、`coords`、`coordsPos`），由 `02f-features.js` 创建，所有构建都带（包括没有面板的
+朋友版，那时全部默认开）。游戏源码里 `ClientFeatures`（`@JSBody`）每帧读它，所以**开关要游戏本体是新编译的版本才有
+效果**；旧游戏不认这个对象，开关不起作用。坐标显示后来改由页面画，见下文“游戏把状态递给页面”。
+这两个类的源码在 `jade/src/client/gui/`。
 
 `src/js/02c-perf-panel.js`。左上角的帧率小标签可以拖动，点击展开面板（界面是英文）：
 
@@ -91,11 +149,35 @@ URL 参数：`?m1=1` 强制开启，`?m1=0` 关闭，`?renderscale=N` 调整分�
 - 网络：游戏自己的 WebSocket 和 WebRTC 数据通道的上下行速度、累计流量、当前连接的
   主机和建立连接用时
 - 电量（仅 Chrome）、游玩时长、全屏按钮
+- 连接无数据警告：游戏的 WebSocket / 数据通道连着，但超过 5 秒没有收到任何数据时，标签
+  变红并显示 `NO DATA 12s`，Network 的 Connection 一行也会标 `silent`，录制的日志里有
+  `silentS` 一列。在线的服务器每秒至少发一个时间同步包，所以持续沉默说明连接卡死
 - Record log：录 60 秒（再点一次提前结束），结束后自动下载
   `eaglercraft-log-<时间>.txt`，内容是每半秒一行的采样（帧率、网格管线计数、网速等）、
   录制首尾的 `__meshWorkerPool` 完整快照，以及这段时间里游戏写进 `window.__log` 的日志。
   用户打不开 F12，排查问题时让用户录一段发过来
-- My server：保存用户自己服务器的完整连接地址，一键测试是否可达
+
+**事件记录（2026-11-16）**：为了查“朋友们同一秒一起 Timed out”和“Mac 主界面按一个按钮就卡一会”，面板把三类事件记在
+localStorage `eaglercraft26.perfPanel.events`（最新 60 条，关页面不丢）：`stall`（连接超过 5 秒没收到数据，带持续秒数；
+正在持续的标“still”）、`close`（游戏的 WebSocket 关闭，带关闭码和关闭前沉默了几秒）、`hitch`（一帧超过 150 毫秒，带当时
+的界面——world/chat/pause menu/menu——以及是不是在点击或按键后 1 秒内）。Network 页的 Connection events 列最近 6 条，
+Stats 页的 Long frames 列最近 5 条，Network 页有 Clear event log 按钮；Record log 下载的文本末尾也附上完整事件记录。
+另有 `gamestall`：游戏自己停了——`window.__eaglerGame.t`（游戏每画完一帧写一次）超过 400 毫秒没变，而页面本身还在转
+（`hitch` 只能看到整个页面卡住，看不到这种）。带当时的界面和是否在点击后；和 `hitch` 一起列在 Stats 页的 Long frames。
+**面板记下和下载的内容会把 `token=...` 和 `eyJ...` 样式的串换成 `<hidden>`**：失败的服务器 ping 会在游戏日志里把含 token 的完整
+地址打出来（2026-11-16 用户的日志里就有），Record log 的游戏日志部分和事件记录都做了遮盖。
+再加两类：`hidden`（标签被藏起来或窗口被盖住，回到前台时记，带秒数）和 `paused`（页面连续 10 秒以上没运行，像睡眠或冻结）。
+原因：服务器判 `Timed out` 是游戏约 30 秒没回应 keep-alive，浏览器暂停后台标签页、电脑睡眠都会造成，和网络无关。
+**2026-11-16 的掉线分析**（助手整理的 81 次 `Timed out`，11-12 起）：68 次是单个人掉，同一秒掉 2 个以上的只有 13 次；
+09:15:51 那次 kleeee 和 Lamalalalalalala 是同一个学校 IP，只掉了 kleeee；kleeee 走 Tailscale（100.115.x，不经 Funnel）也掉过 4 次；
+有监控覆盖的 26 次里只有 2 次掉线前家里网络有异常（约等于随机基线 4%）；Lamalalalalalala 一个人占 31 次，11-14 下午每隔十几分钟
+一次（时间都以 :51 结尾）。结论：大多是**每个玩家自己那头**的问题（后台标签页被浏览器暂停、电脑睡眠、他本地网络、游戏卡死），
+而不是 relay、Funnel、学校网络或家里网络这条共同的路。要进一步区分，要在掉线的人那里看事件记录，所以做了 `friends-diag` 构建
+（带面板但只显示 Network 页，坐标关闭，其余和 friends 一样）。`friends-diag` 只用于排查，用完应换回没有面板的 friends 版。
+只改页面，不需要重编游戏。2026-11-16 用户在学校 Mac 上的日志：对家里服务器的 ping 在 13 秒内失败两次，`connection dropped without a
+WebSocket close frame (code 1006)`，指向学校网络或 Funnel 掐连接；那次录制里没有出现卡死（画面一直 60 帧），Multiplayer 点击后卡 4 秒
+的原因还没找到。助手已给 relay 加了关闭记录（`logs\relay-closes.log`：时间、玩家名、IP、关闭码、谁先关、存活时间、关闭前沉默多久，
+保留 30 天，不记 token）。服务端那边的掉线分析（学校网络 / Funnel / relay 三个嫌疑）见对话，未定论。
 
 实现要点：
 
@@ -112,30 +194,207 @@ URL 参数：`?m1=1` 强制开启，`?m1=0` 关闭，`?renderscale=N` 调整分�
 - 页面的 `<meta charset>` 在 75MB 之后才出现，新增的 JS 只用 ASCII 字符，界面文字用英文。
 - 游戏全屏的是 `#game_frame`，面板在全屏时会被移进去，否则看不到。
 - 按钮用 `<div>` 而不是 `<button>`，滑块 `tabIndex=-1` 且用完立刻 `blur()`，避免获得键盘
-  焦点后被游戏里的按键触发。地址输入用 `prompt()`，同样是为了不和游戏抢键盘。
+  焦点后被游戏里的按键触发。
 - `?panel=0` 关闭面板和网络计数。内部状态在 `window.__eaglerPerfPanel`。
 - 自动调节在真实 M1 上还没实测过，只测过控制逻辑和在无头浏览器里的降档。
 
-## 自建服务器预设（未完成，未验证）
+## 后台标签页保持运行与事件日志导出（2026-11-16）
+
+用户的事件记录显示服务器的关闭码 1000（正常关闭）常落在“标签被藏起来”的时段里：浏览器不再调用被藏起来的页面的
+`requestAnimationFrame`，游戏停转、答不上 keep-alive，服务器判 `Timed out`。`02f-features.js` 末尾包了一层
+`requestAnimationFrame`：页面被藏起来时由 Worker 的 `setInterval(50ms)` 代为触发等待中的回调（约 20 次/秒），页面可见时
+仍走原生。开关 `background`（默认开，`features` 预设可关），在 Mods 页叫 “Keep running in background”。
+**只在假装 `document.hidden` 的无头页里测过逻辑（隐藏时回调继续，关掉后停），没在真实被藏起来的标签里验证，
+也不知道游戏的主循环是否一定走 `window.requestAnimationFrame`。**Network 页新增 Copy / Download 按钮，导出完整事件记录。
+
+**路径探测（2026-11-16）**：学校里 11:08:42 起连接变黑洞（relay 60 秒没收到任何数据，服务器 11:09:12 超时，relay 的关闭通知无人回应，
+关闭码 1006）。标签一直在前台，所以不是后台暂停。分不清是学校网络还是 Funnel/家里这头，所以面板在连接开着时每 5 秒向公网
+（gstatic、1.1.1.1）和 relay 主机（取自 `__eaglerHomeServer.relay`）各发一个 `no-cors` 请求；连续两次失败记 `probe` 事件，
+`stall` 事件带上当时的探测结果，Network 页有 Reachability 一行。公网探测也失败=本地网络；只有 relay 主机失败=去 relay 的路上；
+都通但游戏沉默=只是那条 WebSocket。**还没在真实掉线中验证过。**
+
+## Mac 上 Command+A/C/V/X 不起作用
+
+用户在 Mac 上全选、复制、粘贴都没反应，Windows 上正常。用无头 Chromium 伪装成 Mac 对比
+了原版 HTML 和我们的构建：两者一样，Command+A 不起作用，Control+A 起作用，所以不是
+面板或其他改动造成的。原因是游戏用 `System.getProperty("os.name")` 判断是不是 macOS
+（`InputQuirks.REPLACE_CTRL_KEY_WITH_CMD_KEY`），这个构建里它没有判成 Mac，于是快捷键
+一直是 Control。`02e-mac-shortcuts.js` 在 Mac 上截获 Command+A/C/V/X，改成 Control 版本
+的 keydown 加 keyup 再交给游戏（macOS 按住 Command 时浏览器不发字母键的 keyup，所以补
+一个），并沿用游戏对 Control 版本的 `preventDefault` 结果，避免浏览器自己再粘贴一次。
+伪装 Mac 的无头测试里全选、复制、粘贴都通过；用户在真 Mac 上确认可用（2026-11-13）。粘贴要读系统剪贴板，Chrome
+第一次会弹出“要查看剪贴板”的权限提示，拒绝的话游戏会退回成弹一个输入框让用户手动粘贴。
+所有构建（包括 `"panel": false` 的）都带这个脚本。
+
+## Jade 风格提示条与新版游戏（2026-11-15）
+
+游戏已经换成用工作区源码重新编译的新版（构建号 `1e2017e0712b3280`，原来是 `21b0a73c5a7f5526`；
+新版多了一个资源下载的 XHR 修复），并且在客户端里加了 Jade 风格的提示条：准星对着方块或生物时，
+屏幕上方显示名字、图标、模组名、作物生长、红石强度、生物血量。源码、补丁、完整的重编步骤和踩过的坑
+都在 `jade/`，**改游戏逻辑就是走这条路**（改 Java 源码、重编 Wasm），约 50 分钟。
+
+- 在无头浏览器里完整验证过：新建世界进入后，对着树叶显示 "Oak Leaves / Minecraft"，面板和
+  服务器预设同时正常。**没有在真机上看过，也没有测过作物、红石、生物血量这几项**（编译通过，但没有
+  实际画面）。
+- 这不是真 Jade，是参照 Jade 源码重写的，只能非商用（CC BY-NC-SA 4.0）。真 Jade 装不进 Eaglercraft。
+- **之后又加了一批（只编译通过，没有重编、没有跑过）**：箱子等容器里的物品、熔炉进度、酿造台、唱片机
+  （要服务端答复，自定义消息 `jadelite:req` / `jadelite:data`），以及音符盒、中继器、蜂巢蜜量、物品展示框
+  （纯客户端）。单人和局域网重编后就有；用户的 Paper 服务器要另写插件，消息格式和规则见 `jade/README.md`。
+  一个提醒：我曾说“单人不需要插件，因为内置服务端在浏览器里”，这不对——它跑在独立的 worker 里，客户端读不到，
+  所以也要发消息；只是服务端代码是我们自己编的，不用插件。
+- **最终版已编好并换进仓库（构建 `ea652f93b1b49f33`）**：含容器内容、熔炉、酿造台、唱片机、开关、坐标显示。
+  只做了启动检查（home、friends 都在 15 秒内就绪、无页面错误、开关对象存在），提示条和坐标的画面、新面板外观都
+  还没在浏览器里看过。
+- 用户说过：这类重编不要在容器里自己跑，要他同意；他的 MSI 只有 16GB，链接峰值要 11.4–11.9GB，
+  又依赖 Linux 的 `/proc` 和 bash，实际跑不了。要重编先和用户商量在哪跑。
+- 现有 `local/` 目录被清空过一次，已从上次的构建里恢复 `local/home-server.json`（不含 `panel`）。
+- 打包时 `eaglercraft-26.2.html`（无 token 的普通版）要在 `local/home-server.json` 不存在时构建，否则
+  会把 token 嵌进去。
+
+## 游戏把状态递给页面（`window.__eaglerGame`）
+
+为了少重编，2026-11-15 起游戏每帧把一份状态交给页面，由页面的 JS 画叠加层；以后改这些叠加层的样子和规则只改 JS。
+游戏里的 `GameStateBridge`（`jade/src/client/gui/`，在 `Gui.extractRenderState` 开头调用）写入：`inWorld`、`x/y/z`、
+`bx/by/bz`（方块）、`yaw`、`pitch`、`fps`（游戏自己的计数，就是它屏幕上显示的数）、`guiScale`、`screen`（0 无、1 聊天、
+2 暂停菜单、3 其他界面）、`debug`（F3）、`hudHidden`（F1）、`time`、`biome`、`dimension`（这两个只在变化时写）、`t`
+（`performance.now()`）。超过 1 秒没更新就当游戏没在发（旧版游戏根本不发）。
+
+- 坐标显示从游戏里的 `CoordsHud` 搬到了 `02g-coords-overlay.js`：三行（彩色 XYZ；方块坐标和朝向；生物群系，不在主世界时
+  加维度），风格和面板一致。聊天框、暂停菜单打开时保留（用户反映原来打字、按 ESC 会消失），F3、F1、不在世界里时隐藏。
+  默认在左上角面板圆按钮下方（`top:48px`），可在 Mods 页换角。
+- 面板 Stats 页加了 `FPS` 一行，读 `__eaglerGame.fps`，和游戏屏幕上的数字一致。
+- `ClientFeatures` 只剩 `jade()`，坐标开关由页面自己读。
+- 游戏本体已重编并换进仓库（构建 `32ccde69191f1424`）。启动检查确认主菜单时 `__eaglerGame` 有数据（`inWorld:false`、`fps`、
+  `screen:3`）、坐标元素已建好、无页面错误；**进入世界后的坐标没在浏览器里看过**。用更早的游戏时坐标不显示、FPS 一行隐藏。预览页
+  （`tools/panel_preview.py`）用一份假数据演示坐标显示。
+
+## 游戏卡死的根因与防再犯规则：浏览器版里“线程池”是假的
+
+**症状**（2026-11-16，用户在学校 Mac 上）：点主菜单的 Multiplayer 或 Refresh，游戏冻 0.5 到 4 秒，每次打开或刷新都冻，旧版不冻。
+
+**证据链**（都来自用户的 Record log 和事件记录）：
+- 面板的 `gamestall` 事件（游戏自己停止出帧，页面的 `requestAnimationFrame` 仍在 60 帧转）：每次 2.3–2.7 秒，标注“menu, after a click”。
+  普通的 `hitch`（整页卡住）看不到它，因为页面本身没卡，只是游戏循环被堵住了。
+- 每次冻结结束的那一刻，游戏日志里正好有一条 `[Render thread/ERROR] Can't ping wss://...`。**日志里的线程名是 `Render thread`，说明探测
+  在渲染线程上跑**。
+- 失败探测的 2.5 秒正好等于源码里写死的 `Math.max(2500, 10000 / candidates)`（`ServerStatusPinger.pingServerBlocking`）。
+- 删掉列表里一条失效条目后，失败报错没了，但成功的探测仍会冻 0.45–0.9 秒（握手时间），偶尔 3.6 秒（网络抖）。
+
+**机制**：`ServerSelectionList` 把探测提交给 `THREAD_POOL`（`ScheduledThreadPoolExecutor`）。浏览器版里它被替换成
+`teavm-compat/.../TThreadPoolExecutor`、`TScheduledThreadPoolExecutor`（`TExecutors.InlineScheduledExecutorService`），**注释就写着
+“runs every command inline on the calling thread”：任务原地在调用者线程上同步执行，根本不是后台线程**。探测里的
+`WebSocketPacketBridge.connect(...)` → `connectBlocking(timeout)` 要一直等到连上或超时，于是渲染线程被堵到那时。网络越慢、
+地方越远（学校到家里）、失败越多（失效条目每次必等 2.5 秒），冻得越久；在家里网络快，握手 0.1 秒，没人察觉。
+旧版（0.6-dev，构建 `21b0a73c`）没有这个毛病，原因不清楚：旧版源码拿不到（工作区只有一个提交），旧版列表有信号格和在线人数。
+
+**为什么加入服务器不冻**：`ConnectScreen` 自己开了独立线程（日志里叫 `Server Connector #N`），阻塞连接在那个线程里等。只有探测走了假线程池。
+
+**修复**：`ServerSelectionList.runPing`：浏览器里用 `new Thread(task, "Server Pinger").start()`（绿色线程，项目里已有先例，
+`ServerWorkerHost` 的注释称它是 “proven green-thread”，另见 `BrowserResourceReloadExecutor`），桌面仍走线程池。**只通过了编译，还没重编，
+没在浏览器里验证。**验证办法：新版里列表放一个连不上的服务器条目，点 Multiplayer，看面板 Long frames 里不再出现 `game froze`。
+
+**以后写或移植 Java 代码时的规则**：
+1. **不要在渲染线程上做任何会等的事**：`connectBlocking`、`Future.get()`、`Thread.sleep`、`Object.wait`、同步等待网络或磁盘。
+2. **`ExecutorService`、`ScheduledExecutorService`、`ThreadPoolExecutor` 在浏览器版里都是原地执行，不是后台。**要后台就用
+   `new Thread(runnable, "名字").start()`（绿色线程，等待时让出主线程）。
+3. 写新代码前先问：这一步会不会等？会的话它跑在哪个线程？**看日志里的线程名**：任务在等的时候还标着 `Render thread`，就是在渲染线程上。
+4. 排查“点某个按钮就卡”：先在面板事件记录里分清是 `hitch`（整页卡）还是 `gamestall`（游戏自己停了，页面还在转），再对照游戏日志里那一刻的
+   报错和线程名。
+5. 已知的其他可疑点：`RemoteFriendListUpdateHandler` 用了 `Executors.newSingleThreadScheduledExecutor`（浏览器里也是原地执行），
+   里面如果有等待也会同样冻住；还没查。
+
+## 新游戏本体和旧版（0.6-dev）的两处差别，以及我们的修复（2026-11-17，源码已改、已通过编译，**还没重编**）
+
+用户在 Drive 里传了早期版本 `eaglercraft-26.2 (4).html`（我们自己的早期构建：原版游戏本体加第一版 M1 配置和面板，游戏本体和原版逐字节
+相同，构建号 `21b0a73c`）。对比发现新游戏本体（u2，`32ccde69`）有两处不同，用户更喜欢旧版的：
+
+1. **点 Multiplayer 卡住**：浏览器版里 `ServerSelectionList.THREAD_POOL` 是“原地执行”的假线程池（`TThreadPoolExecutor` 注释：
+   “runs every command inline on the calling thread”），所以服务器探测在渲染线程上同步等；走 relay 的探测要 `connectBlocking`
+   到连上或超时（失败至少等 2.5 秒），期间整个游戏冻住。旧版没有这个问题，旧版列表里服务器有信号格和在线人数。
+   修复：`ServerSelectionList.runPing` 在浏览器里用 `new Thread(...).start()`（项目里已有的绿色线程做法，如
+   `BrowserResourceReloadExecutor`）跑探测，列表仍显示在线人数和延迟，不冻游戏。
+2. **主菜单**：新版把个人资料做成三个图标之一，旧版是一个宽的 “Edit Profile” 文字按钮加语言、辅助功能两个图标。
+   `TitleScreen` 已改回旧版布局（宽按钮在 Multiplayer 下面，图标一排两个）。
+
+补丁在 `jade/game.patch`。不要换回旧游戏本体：旧版没有服务器推送资源包的修复、没有 Jade/状态桥。
+
+## Paper 插件 JadeLite（让服务器上的提示条也显示箱子等内容）
+
+`server-plugin/jadelite/`，成品 `release/jadelite-1.0.0.jar`，说明见那里的 README。回答 `jadelite:req`，格式与游戏内置
+服务端一致。要点：Paper 只给客户端登记过的频道发消息，Eaglercraft 客户端不登记，所以插件在玩家进服时用反射调用
+`addChannel`。**2026-11-15 已装到用户的 Paper 服务器上，用户确认在服务器里能看到容器内容**（反射 `addChannel` 在 Paper 26.2 上有效）。
+客户端发 3 次没收到答复就不再问，所以装好插件后玩家要重新进服一次。
+
+## 服务器推送资源包（“服务器当模组加载器”的基础）
+
+2026-11-15 实测：服务器 `server.properties` 设了 `resource-pack`，客户端确实收到推送（日志
+`ClientboundResourcePackPushPacket`、`server resource-pack push ... policy=ENABLED`），但**旧版游戏（构建
+`21b0a73c5a7f5526`）里会失败**：下载或命中缓存后调用 `Files.setLastModifiedTime`，浏览器版不支持，抛
+`UnsupportedOperationException`，整个包作废（`Pack 1 failed to download` / `Failed to store downloaded file`）。
+新版源码 `HttpUtil.updateModificationTime` 已经 catch 这个异常，只记警告。**新版（`ea652f93`）上用户实测通过**：泥土名字变了。之后测试包已撤下、玻璃包恢复，WIT 插件（用 boss 条显示方块信息，和提示条重复）已停用。
+
+- 测试包：`server-packs/test-pack.zip`（只把泥土英文名改成 `Dirt [server pack OK]`，pack format 88，sha1
+  `58b1d1630015582b664076ae35afffed7ab5af43`），用 raw.githubusercontent.com 的分支地址托管，响应带
+  `access-control-allow-origin: *`。
+- 用户服务器现状：测试包替换了原来的 Borderless Glass 包，原配置备份在服务器的
+  `backups/server.properties.bak-before-testpack`。撤回：清空 `resource-pack`、`resource-pack-sha1` 后重启。
+- 游戏会按服务器条目记住“是否接受服务器资源包”（Multiplayer → Edit → Server Resource Packs），设成
+  Disabled 时静默拒绝。用户那里是 Enabled。
+- 查原因的方法：地址加 `?perfdebug`，**先**点 Record log **再**进服，进服那一刻的下载日志才录得到。
+
+Modrinth 上（2026-11-15 查）Fabric、26.2、`client_side:unsupported` 的模组 3739 个，`optional` 943 个；大头是世界
+生成（很多同时有数据包版，Paper 也能装），还有玩法类，以及靠 Polymer 库在服务端加新物品/方块/生物的 30 多个
+（Polymer 26.2 版 `0.17.5+26.2`）。用 Fabric 服务端就不能用 Paper 插件（AuthMe 要换同类 Fabric 模组）。都没在
+用户服务器上实际跑过。
+
+## 和用户协作的约定
+
+- 用户说要删某个功能时直接删，不用先确认。
+- 用户很在意 relay token 的安全：不要把 token 写进任何会提交的文件。用户决定不用密码
+  加密（嫌麻烦），所以给用户的个人构建用明文写法；加密写法和 `encrypt-token.html` 留着
+  备用，不要主动推。
+- 用户打不开 F12，需要看运行情况时让用户用面板的 Record log 录一段发过来。
+
+## 自建服务器预设
 
 用户在家里的 Windows 电脑上跑了原版 26.2 服务端 + `kkudzu/relay`（私有模式，需要 token），
-用 Tailscale Funnel 得到固定地址。目标是让 HTML 打开后不用手动填 relay 和 token。
+用 Tailscale Funnel 得到固定地址，白名单已开。目标是 HTML 打开后不用手动填 relay 和 token。
 
-- `local/home-server.json`（已加入 `.gitignore`，**含 token，绝不能提交**）：
-  `{ "name", "relay": "wss://...", "token", "target": "127.0.0.1:25565" }`
+- `local/home-server.json`（已加入 `.gitignore`，**可能含 token，绝不能提交**），两种写法：
+  - 明文：`{ "name", "relay": "wss://...", "target": "127.0.0.1:25565", "token" }`
+  - 加密：把 `token` 换成 `"enc": { "v", "iter", "salt", "iv", "data" }`
+- `tools/encrypt-token.html`：独立页面，在用户自己的浏览器里用密码加密 token（PBKDF2-SHA256
+  60 万次 + AES-GCM），输出加密写法的 JSON。这样 token 和密码都不用经过对话
+- 两种写法都可以再加 `"panel": false`：这样构建出来的文件没有性能面板，也不显示启动时
+  的 M1 横幅（渲染分辨率和 mesh worker 的调整照常生效）。给用户朋友的版本用这个
+- 还可以加 `"features": {"coords": false}`（也可以是 `jade`、`coordsPos`）改这个构建里内置功能的默认值，`02f-features.js` 读它。
+  没有面板的朋友版没法在游戏里切回去，所以要关什么就在这里关。玩家在面板里保存过的选择优先于它。
+  **2026-11-16 起给朋友的版本是 `"panel": false` 加 `"features": {"coords": false}`**：用户要求关掉朋友的坐标，Jade 仍然开着
+  排查掉线用的 `friends-diag` 版去掉 `"panel": false`，保留 `"features": {"coords": false}`，再加 `"panelTabs": ["net"]`
+  （只显示 Network 一页、不显示底部的 Fullscreen 和 Record log；`02c` 读 `panelTabs`，值是标签名 stats/display/net/features 的数组）
 - `build.py` 的 `@@EAG:json:<路径>@@` 占位符：文件存在就内联成 JSON，不存在就是 `null`。
   模板里用它给 `window.__eaglerHomeServer` 赋值
 - `02d-home-server.js`：启动前把这个 relay 写进 localStorage 的
   `_eaglercraftX.relay.list.v3`（base64 的 JSON 数组，字段 `name/address/private/token/
-  capability/detected`），放在第一位；游戏用第一个支持 multiplayer 的 relay 连 Java 服务端
-- 加入服务器用游戏自带的启动链接：`?server=<target>&transport=relay`；面板的 My server
-  里有 Join 按钮会带着这两个参数刷新页面
+  capability/detected`），放在第一位；游戏用第一个支持 multiplayer 的 relay 连 Java 服务端。
+  加密写法下，第一次加入或测试时用 `prompt()` 问密码，解开后 token 只存在游戏自己的
+  relay 列表里（游戏本来就要把它存在那里），之后不再问
+- 加入服务器用游戏自带的启动链接：在地址末尾加 `?server=<target>&transport=relay`。
+  带这两个参数打开时，加密写法会先问密码
+- 面板里原来有 My server 一栏（Join、Set address、Test、Lock），用户要求删掉了，不要再加
+  回来。旧版本存在 localStorage `eaglercraft26.perfPanel.server` 里的地址（含 token）会在
+  启动时被清除。要让浏览器忘掉已解锁的 token，可调用 `window.__eaglerHomeServerForget()`
 
-状态：以上格式来自较新的源码，在本仓库这个构建上**还没验证能连通**。无头测试里确认了
-relay 列表能写进去，但游戏首次启动停在 Edit Profile 界面，还没走到连接那一步就被用户
-叫停。用户自己手动填也连不上（带不带 token 都试过），原因待查，需要先看用户的报错和
-界面截图。注意：带了本地配置的构建产物里有 token，不要对它运行 `split.py`，也不要
-把它提交或公开。
+状态：用户用明文写法的个人构建实际连进了自己的服务器（2026-11-11），所以 relay 列表
+预设在这个构建上是有效的。用户反馈不加 `?server=...&transport=relay` 也能进（从游戏
+自己的 Multiplayer 界面连），启动链接只是可选的捷径。加密写法测过加密、解密、错误密码
+重试和解锁后免输入，但没有人实际用它连过服务器。注意：带了明文配置的构建产物里有
+token，不要对它运行 `split.py`，也不要提交或公开。
+
+服务器这边的现状（由用户电脑上的另一个助手维护，不在本仓库里）：relay 用所有人共用
+的一个 token；试过“每人一个绑定玩家名的 token”，用户嫌每人一个文件太麻烦，退回了共用
+token；防冒名改用服务端登录插件（Paper + AuthMe，玩家进服后 `/register`、`/login`）。
+个人构建有两个：用户自己的带面板，发给朋友的不带面板（`"panel": false`），token 相同。
 
 ## 排查记录：地形有碰撞但看不见
 
@@ -162,6 +421,26 @@ Record log 在 M1 Air 上录到的数据（新建随机世界，默认设置）�
 客户端的 `[EagPerfClient]`，服务端 worker 的 `[EagPerf]` 日志不会转发到页面，所以服务端
 内部哪一步慢还没有数据。JS 层改不了生成速度；能缓解的是调低渲染距离、少在新地形里
 高速移动，根本办法是用原生 Java 服务端。
+
+## 排查记录：在自建服务器上移动时掉帧
+
+2026-11-12 用户在家里的 Paper 服务器上录到：平静时 60 帧，区块成批到达时掉到 16–45 帧，
+清晰度已是 1x、mesh 队列没有积压，一分钟里有 627 个含流体的区块段在主线程内联建网格
+（`fluidInline`）。原因是 **macOS 开着低电量模式**，关掉后稳定 60 帧。
+
+以后用户再反映卡顿，先问是否开着低电量模式（系统设置 → 电池），以及 Chrome 的节能
+模式（设置 → 性能）。低电量模式下 CPU 被限速，主线程处理不过来成批到达的区块；这时
+能缓解的是调低渲染距离，或在服务端限制每个玩家的区块发送速率。
+
+## 排查记录：自建服务器上区块不再加载
+
+2026-11-12 用户反映玩一阵后新区块不加载。日志：60 帧、区块线程全空闲、队列为 0，下载
+速度全程 0，上传 0.6–0.8 KB/s（只有位置包）；用户确认已登录 AuthMe、不会被拉回原地。
+面板的下载速度以 B/s 显示，持续为 0 就说明服务器连时间同步包都没送来，即连接卡死
+（能发不能收），不是“服务器在发但区块慢”。候选原因：Tailscale Funnel 有不可配置、
+未公布数值的带宽限制（官方文档）；服务端或 relay 卡住。为区分这些，加了上面的 NO DATA
+警告，并让用户在卡住时看 Connection 一行、刷新页面后看是否恢复、让另一个助手只读检查
+Paper 日志、TPS、relay 日志和 `tailscale funnel status`。未确认根因。
 
 ## 源码参考
 

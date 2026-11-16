@@ -10,18 +10,18 @@
 					}
 					let module;
 					const meshModulePromise = WebAssembly.compileStreaming(
-							fetch("mesh-worker.wasm?v=21b0a73c5a7f5526"), { builtins: ["js-string"] }
+							fetch("mesh-worker.wasm?v=32ccde69191f1424"), { builtins: ["js-string"] }
 						).catch(async (meshStreamErr) => {
 							window.__log.push("W:[shell] mesh compileStreaming failed (" + meshStreamErr + "), falling back to byte fetch");
-							const meshResp = await fetch("mesh-worker.wasm?v=21b0a73c5a7f5526");
+							const meshResp = await fetch("mesh-worker.wasm?v=32ccde69191f1424");
 							return WebAssembly.compile(await meshResp.arrayBuffer(), { builtins: ["js-string"] });
 						});
 					const serverModulePromise = true ? WebAssembly.compileStreaming(
-						fetch("server-worker.wasm?v=21b0a73c5a7f5526"), { builtins: ["js-string"] }
+						fetch("server-worker.wasm?v=32ccde69191f1424"), { builtins: ["js-string"] }
 					).catch(async (serverStreamErr) => {
 						window.__log.push("W:[shell] server compileStreaming failed (" + serverStreamErr + "), falling back to byte fetch");
 						try {
-							const serverResp = await fetch("server-worker.wasm?v=21b0a73c5a7f5526");
+							const serverResp = await fetch("server-worker.wasm?v=32ccde69191f1424");
 							return await WebAssembly.compile(await serverResp.arrayBuffer(), { builtins: ["js-string"] });
 						} catch (serverByteErr) {
 							window.__log.push("W:[shell] dedicated server Wasm unavailable (" + serverByteErr + "); using full image for server worker");
@@ -29,11 +29,11 @@
 						}
 					}) : Promise.resolve(null);
 					try {
-						module = await WebAssembly.compileStreaming(fetch("classes.wasm?v=21b0a73c5a7f5526"), { builtins: ["js-string"] });
+						module = await WebAssembly.compileStreaming(fetch("classes.wasm?v=32ccde69191f1424"), { builtins: ["js-string"] });
 						window.__log.push("L:[shell] wasm compileStreaming path OK");
 					} catch (streamErr) {
 						window.__log.push("L:[shell] compileStreaming failed (" + streamErr + "), falling back to byte fetch");
-						const resp = await fetch("classes.wasm?v=21b0a73c5a7f5526");
+						const resp = await fetch("classes.wasm?v=32ccde69191f1424");
 						const bytes = await resp.arrayBuffer();
 						window.__log.push("L:[shell] fetched classes.wasm " + bytes.byteLength + " bytes");
 						module = await WebAssembly.compile(bytes, { builtins: ["js-string"] });
@@ -60,7 +60,7 @@
 					window.__eaglerWasmModule = null;
 					window.__eaglerMeshWasmModule = null;
 					window.__eaglerServerWasmModule = null;
-					tv = await TeaVM.wasmGC.load("classes.wasm?v=21b0a73c5a7f5526", { installImports(i) {} });
+					tv = await TeaVM.wasmGC.load("classes.wasm?v=32ccde69191f1424", { installImports(i) {} });
 					window.__log.push("L:[shell] wasm compileStreaming path OK");
 				}
 				window.__loaded = true;

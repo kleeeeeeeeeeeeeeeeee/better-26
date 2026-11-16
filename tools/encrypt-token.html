@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>加密服务器 token</title>
+<style>
+	:root { color-scheme: light dark; --line: rgba(128,128,128,0.4); }
+	body { font: 15px/1.6 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; max-width: 720px; margin: 24px auto; padding: 0 16px; }
+	h1 { font-size: 22px; margin-bottom: 4px; }
+	p.note { opacity: 0.75; margin: 4px 0 14px; }
+	label { display: block; margin-top: 12px; font-weight: 600; }
+	label small { font-weight: 400; opacity: 0.7; }
+	input, textarea { width: 100%; box-sizing: border-box; padding: 8px; font: 13px Menlo, Consolas, monospace; margin-top: 4px; }
+	textarea { height: 150px; }
+	button { padding: 8px 18px; font-size: 14px; margin: 14px 8px 0 0; cursor: pointer; }
+	#status { margin-top: 10px; font-weight: 600; }
+	.bad { color: #c62828; } .ok { color: #1a7f37; }
+</style>
+</head>
+<body>
+<h1>加密服务器 token</h1>
+<p class="note">这个页面只在你的浏览器里运行，不联网，不会把任何内容发到别处。它用你设的密码把 token 加密，生成一段可以放心发给别人的文字。没有密码的人无法从这段文字里还原出 token。</p>
+
+<label>名字 <small>显示在游戏面板的按钮上</small></label>
+<input id="name" value="Home server">
+
+<label>relay 地址 <small>tunnel-url.txt 里的 wss:// 地址</small></label>
+<input id="relay" placeholder="wss://...">
+
+<label>服务器目标地址</label>
+<input id="target" value="127.0.0.1:25565">
+
+<label>token <small>secrets 文件夹里的那一长串</small></label>
+<input id="token" type="password" autocomplete="off">
+
+<label>密码 <small>至少 12 个字符，建议用几个不相关的词拼起来</small></label>
+<input id="pass1" type="password" autocomplete="new-password">
+
+<label>再输入一次密码</label>
+<input id="pass2" type="password" autocomplete="new-password">
+
+<button id="go">生成</button>
+<div id="status"></div>
+
+<label>结果 <small>把下面整段复制出来，它不含明文 token</small></label>
+<textarea id="out" readonly></textarea>
+<button id="copy">复制结果</button>
+
+<script>
+(function () {
+	"use strict";
+	var ITERATIONS = 600000;
+	function $(id) { return document.getElementById(id); }
+	function b64(bytes) {
+		var binary = "";
+		bytes = new Uint8Array(bytes);
+		for (var i = 0; i < bytes.length; ++i) binary += String.fromCharCode(bytes[i]);
+		return btoa(binary);
+	}
+	function status(text, ok) {
+		$("status").textContent = text;
+		$("status").className = ok ? "ok" : "bad";
+	}
+	$("go").onclick = function () {
+		$("out").value = "";
+		var relay = $("relay").value.trim(), target = $("target").value.trim();
+		var token = $("token").value.trim(), password = $("pass1").value;
+		if (!/^wss?:\/\/[^\s/]+/i.test(relay)) return status("relay 地址要以 wss:// 开头");
+		if (!/^[^\s:]+:\d+$/.test(target)) return status("目标地址的格式是 主机:端口");
+		if (!token) return status("请填入 token");
+		if (password.length < 12) return status("密码至少 12 个字符");
+		if (password !== $("pass2").value) return status("两次输入的密码不一样");
+		if (!window.crypto || !crypto.subtle) return status("这个浏览器不支持加密，请换用新版 Chrome 或 Edge");
+		status("正在加密…", true);
+		var salt = crypto.getRandomValues(new Uint8Array(16));
+		var iv = crypto.getRandomValues(new Uint8Array(12));
+		crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveKey"])
+			.then(function (material) {
+				return crypto.subtle.deriveKey({ name: "PBKDF2", hash: "SHA-256", salt: salt, iterations: ITERATIONS },
+					material, { name: "AES-GCM", length: 256 }, false, ["encrypt"]);
+			}).then(function (key) {
+				return crypto.subtle.encrypt({ name: "AES-GCM", iv: iv }, key, new TextEncoder().encode(token));
+			}).then(function (data) {
+				$("out").value = JSON.stringify({
+					name: $("name").value.trim() || "Home server",
+					relay: relay.replace(/\/+$/, ""),
+					target: target,
+					enc: { v: 1, iter: ITERATIONS, salt: b64(salt), iv: b64(iv), data: b64(data) }
+				}, null, 2);
+				$("token").value = $("pass1").value = $("pass2").value = "";
+				status("完成。复制下面的结果即可，密码请另外记好，不要和它放在一起。", true);
+			}).catch(function (err) {
+				status("加密失败: " + err);
+			});
+	};
+	$("copy").onclick = function () {
+		var text = $("out").value;
+		if (!text) return;
+		if (navigator.clipboard && navigator.clipboard.writeText) {
+			navigator.clipboard.writeText(text).then(function () { status("已复制", true); }, function () { $("out").select(); });
+		} else {
+			$("out").select();
+		}
+	};
+})();
+</script>
+</body>
+</html>
