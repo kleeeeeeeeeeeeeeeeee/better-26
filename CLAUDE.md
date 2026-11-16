@@ -211,7 +211,8 @@ WebSocket close frame (code 1006)`，指向学校网络或 Funnel 掐连接；�
 关闭码 1006）。标签一直在前台，所以不是后台暂停。分不清是学校网络还是 Funnel/家里这头，所以面板在连接开着时每 5 秒向公网
 （gstatic、1.1.1.1）和 relay 主机（取自 `__eaglerHomeServer.relay`）各发一个 `no-cors` 请求；连续两次失败记 `probe` 事件，
 `stall` 事件带上当时的探测结果，Network 页有 Reachability 一行。公网探测也失败=本地网络；只有 relay 主机失败=去 relay 的路上；
-都通但游戏沉默=只是那条 WebSocket。**还没在真实掉线中验证过。**
+都通但游戏沉默=只是那条 WebSocket。12:06 那次真实掉线里抓到 `internet ok, relay host FAIL`（公网通、去家里不通），三个学校玩家同时断，家里电脑 Wi-Fi 信号当时从 86% 掉到 63–75%（6GHz）。
+倾向是家里这头或 Funnel，不是学校整体网络；待验证（改有线或 5GHz，读 Tailscale 日志）。详见 `reports/2026-11-16-disconnect-investigation.md`。
 
 **自动断开死连接（`autoDrop`，2026-11-16）**：黑洞时浏览器要几分钟才发现连接死了（用户那次 300 秒以上）。面板在游戏的 WebSocket
 连续 15 秒没收到任何数据（页面在前台且回到前台超过 10 秒）时调用 `socket.close()`，1.5 秒内浏览器没报告关闭就自己给游戏派发一个
