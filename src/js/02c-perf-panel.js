@@ -83,6 +83,24 @@
 		if (!g || performance.now() - g.t > 2000) return "";
 		return g.inWorld ? (g.screen === 0 ? "in world" : g.screen === 1 ? "chat" : g.screen === 2 ? "pause menu" : "menu") : "menu";
 	}
+	// A server drops a player whose game has not answered its keep-alive for about 30 s. That
+	// also happens when nothing is wrong with the network: the browser pauses a page whose tab
+	// is hidden or whose window is covered, and a sleeping computer pauses everything. So the
+	// log notes both: "hidden" (the tab was hidden, noted when it is shown again, with how long)
+	// and "paused" (the page did not run for 10 s or more while it was in view).
+	var hiddenSince = 0, justShown = false;
+	try {
+		document.addEventListener("visibilitychange", function () {
+			if (document.hidden) {
+				hiddenSince = Date.now();
+			} else if (hiddenSince) {
+				var seconds = Math.round((Date.now() - hiddenSince) / 1000);
+				if (seconds >= 5) addEvent({ k: "hidden", t: hiddenSince, v: seconds, x: "tab hidden or window covered" });
+				hiddenSince = 0;
+				justShown = true;
+			}
+		});
+	} catch (e) {}
 	var lastInputAt = 0;
 	try {
 		["pointerdown", "keydown"].forEach(function (type) {
@@ -402,6 +420,8 @@
 	function describe(entry) {
 		if (entry.k === "stall") return "no data " + entry.v + " s" + (entry.open ? " (still)" : "");
 		if (entry.k === "gamestall") return "game froze " + entry.v + " ms" + (entry.open ? " (still)" : "") + (entry.x ? " (" + entry.x + ")" : "");
+		if (entry.k === "hidden") return "tab hidden " + entry.v + " s";
+		if (entry.k === "paused") return "page paused " + entry.v + " s (sleep or freeze)";
 		if (entry.k === "close") return "connection closed, " + entry.x + (entry.v >= 5 ? ", silent " + entry.v + " s before" : "");
 		return "long frame " + entry.v + " ms" + (entry.x ? " (" + entry.x + ")" : "");
 	}
@@ -423,6 +443,7 @@
 				line.appendChild(el("span", "opacity:0.6;flex:none", clock(entry.t)));
 				var text = el("span", "", describe(entry));
 				if (entry.k === "stall" || entry.k === "close" || (entry.k === "gamestall" && entry.v >= 1000)) text.style.color = BAD;
+				else if (entry.k === "hidden" || entry.k === "paused") text.style.color = WARN;
 				else text.style.color = entry.v >= 500 ? BAD : WARN;
 				line.appendChild(text);
 				box.appendChild(line);
@@ -580,7 +601,7 @@
 		row("up", "Upload");
 		row("conn", "Connection");
 		section("Connection events");
-		eventList(["stall", "close"], 6, "None yet. Stalls of 5 s or more and closed connections are listed here.");
+		eventList(["stall", "close", "hidden", "paused"], 8, "None yet. Stalls, closed connections, hidden tabs and pauses are listed here.");
 		var clearLine = el("div", "display:flex;gap:8px;margin-top:8px");
 		var clearButton = clickable(el("div", BUTTON_CSS, "Clear event log"), function () { clearEvents(); update(); });
 		clearButton.title = "Forget the recorded stalls, closed connections and long frames";
@@ -782,6 +803,12 @@
 		if (lastFrame) {
 			var delta = now - lastFrame;
 			if (delta > worst) worst = delta;
+			if (delta >= 10000) {
+				// The first frame after a hidden tab is shown is just the time it was hidden.
+				if (justShown || document.hidden) justShown = false;
+				else addEvent({ k: "paused", t: Date.now() - Math.round(delta), v: Math.round(delta / 1000),
+					x: "page did not run (computer asleep or frozen)" });
+			}
 			// A long frame while the page is in view: note it with what the game was showing.
 			if (delta > 150 && delta < 10000 && !document.hidden) {
 				var where = whereNow();

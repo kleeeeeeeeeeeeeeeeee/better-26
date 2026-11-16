@@ -166,6 +166,14 @@ Stats 页的 Long frames 列最近 5 条，Network 页有 Clear event log 按钮
 （`hitch` 只能看到整个页面卡住，看不到这种）。带当时的界面和是否在点击后；和 `hitch` 一起列在 Stats 页的 Long frames。
 **面板记下和下载的内容会把 `token=...` 和 `eyJ...` 样式的串换成 `<hidden>`**：失败的服务器 ping 会在游戏日志里把含 token 的完整
 地址打出来（2026-11-16 用户的日志里就有），Record log 的游戏日志部分和事件记录都做了遮盖。
+再加两类：`hidden`（标签被藏起来或窗口被盖住，回到前台时记，带秒数）和 `paused`（页面连续 10 秒以上没运行，像睡眠或冻结）。
+原因：服务器判 `Timed out` 是游戏约 30 秒没回应 keep-alive，浏览器暂停后台标签页、电脑睡眠都会造成，和网络无关。
+**2026-11-16 的掉线分析**（助手整理的 81 次 `Timed out`，11-12 起）：68 次是单个人掉，同一秒掉 2 个以上的只有 13 次；
+09:15:51 那次 kleeee 和 Lamalalalalalala 是同一个学校 IP，只掉了 kleeee；kleeee 走 Tailscale（100.115.x，不经 Funnel）也掉过 4 次；
+有监控覆盖的 26 次里只有 2 次掉线前家里网络有异常（约等于随机基线 4%）；Lamalalalalalala 一个人占 31 次，11-14 下午每隔十几分钟
+一次（时间都以 :51 结尾）。结论：大多是**每个玩家自己那头**的问题（后台标签页被浏览器暂停、电脑睡眠、他本地网络、游戏卡死），
+而不是 relay、Funnel、学校网络或家里网络这条共同的路。要进一步区分，要在掉线的人那里看事件记录，所以做了 `friends-diag` 构建
+（带面板、坐标关闭，其余和 friends 一样）。`friends-diag` 只用于排查，用完应换回没有面板的 friends 版。
 只改页面，不需要重编游戏。2026-11-16 用户在学校 Mac 上的日志：对家里服务器的 ping 在 13 秒内失败两次，`connection dropped without a
 WebSocket close frame (code 1006)`，指向学校网络或 Funnel 掐连接；那次录制里没有出现卡死（画面一直 60 帧），Multiplayer 点击后卡 4 秒
 的原因还没找到。助手已给 relay 加了关闭记录（`logs\relay-closes.log`：时间、玩家名、IP、关闭码、谁先关、存活时间、关闭前沉默多久，
@@ -297,6 +305,7 @@ Modrinth 上（2026-11-15 查）Fabric、26.2、`client_side:unsupported` 的模
 - 还可以加 `"features": {"coords": false}`（也可以是 `jade`、`coordsPos`）改这个构建里内置功能的默认值，`02f-features.js` 读它。
   没有面板的朋友版没法在游戏里切回去，所以要关什么就在这里关。玩家在面板里保存过的选择优先于它。
   **2026-11-16 起给朋友的版本是 `"panel": false` 加 `"features": {"coords": false}`**：用户要求关掉朋友的坐标，Jade 仍然开着
+  排查掉线用的 `friends-diag` 版只去掉 `"panel": false`，保留 `"features": {"coords": false}`
 - `build.py` 的 `@@EAG:json:<路径>@@` 占位符：文件存在就内联成 JSON，不存在就是 `null`。
   模板里用它给 `window.__eaglerHomeServer` 赋值
 - `02d-home-server.js`：启动前把这个 relay 写进 localStorage 的
