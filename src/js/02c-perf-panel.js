@@ -773,7 +773,9 @@
 				var where = g && performance.now() - g.t < 2000
 					? (g.inWorld ? (g.screen === 0 ? "in world" : g.screen === 1 ? "chat" : g.screen === 2 ? "pause menu" : "menu") : "menu")
 					: "";
-				var afterInput = now - lastInputAt < 1000;
+				// Judged from when the long frame began (lastFrame), not from when it ended: a
+				// click that started a 4 second stall is 4 seconds old by the time the frame ends.
+				var afterInput = lastInputAt > lastFrame - 1000;
 				addEvent({ k: "hitch", t: Date.now(), v: Math.round(delta),
 					x: where + (afterInput ? (where ? ", " : "") + "after a click or key" : "") });
 			}
