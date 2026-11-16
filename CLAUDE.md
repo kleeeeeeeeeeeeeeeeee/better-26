@@ -271,6 +271,9 @@ WebSocket close frame (code 1006)`，指向学校网络或 Funnel 掐连接；�
 - 面板 Stats 页加了 `FPS` 一行，读 `__eaglerGame.fps`，和游戏屏幕上的数字一致。
 - `ClientFeatures` 只剩 `jade()`，坐标开关由页面自己读。
 - 游戏本体已重编并换进仓库（构建 `32ccde69191f1424`）。启动检查确认主菜单时 `__eaglerGame` 有数据（`inWorld:false`、`fps`、
+- **2026-11-16 又重编一次（构建 `41c1c7a547c3baec`）**：含 Multiplayer 探测改走 `new Thread` 的修复、主菜单改回宽的 “Edit Profile” 按钮。
+  只做了启动检查（home 和 friends 都 14 秒内就绪、无页面错误、`autoDrop`/`background` 开关对象存在）。**Multiplayer 不再卡、主菜单按钮的样子
+  都没有在浏览器里确认过**（自动点击脚本的坐标对不上新的用户名对话框，用户又要求别再开无头浏览器）。
   `screen:3`）、坐标元素已建好、无页面错误；**进入世界后的坐标没在浏览器里看过**。用更早的游戏时坐标不显示、FPS 一行隐藏。预览页
   （`tools/panel_preview.py`）用一份假数据演示坐标显示。
 
