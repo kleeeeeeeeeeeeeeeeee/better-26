@@ -198,6 +198,15 @@ WebSocket close frame (code 1006)`，指向学校网络或 Funnel 掐连接；�
 - `?panel=0` 关闭面板和网络计数。内部状态在 `window.__eaglerPerfPanel`。
 - 自动调节在真实 M1 上还没实测过，只测过控制逻辑和在无头浏览器里的降档。
 
+## 后台标签页保持运行与事件日志导出（2026-11-16）
+
+用户的事件记录显示服务器的关闭码 1000（正常关闭）常落在“标签被藏起来”的时段里：浏览器不再调用被藏起来的页面的
+`requestAnimationFrame`，游戏停转、答不上 keep-alive，服务器判 `Timed out`。`02f-features.js` 末尾包了一层
+`requestAnimationFrame`：页面被藏起来时由 Worker 的 `setInterval(50ms)` 代为触发等待中的回调（约 20 次/秒），页面可见时
+仍走原生。开关 `background`（默认开，`features` 预设可关），在 Mods 页叫 “Keep running in background”。
+**只在假装 `document.hidden` 的无头页里测过逻辑（隐藏时回调继续，关掉后停），没在真实被藏起来的标签里验证，
+也不知道游戏的主循环是否一定走 `window.requestAnimationFrame`。**Network 页新增 Copy / Download 按钮，导出完整事件记录。
+
 ## Mac 上 Command+A/C/V/X 不起作用
 
 用户在 Mac 上全选、复制、粘贴都没反应，Windows 上正常。用无头 Chromium 伪装成 Mac 对比

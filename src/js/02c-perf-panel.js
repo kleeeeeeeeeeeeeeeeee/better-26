@@ -600,6 +600,38 @@
 		if (autoOn) auto.reset();
 	}
 
+	// The whole event log as text, for pasting into a chat or saving as a file.
+	function eventsText() {
+		return ["Eaglercraft event log, " + new Date().toISOString() + " (" + events.length + " events, newest last)",
+			"time\tkind\tlength (ms or s)\tdetail"].concat(events.map(function (entry) {
+			return new Date(entry.t).toISOString() + "\t" + entry.k + "\t" + entry.v + "\t" + redact(entry.x || "");
+		})).join("\n") + "\n";
+	}
+	function exportEvents(mode, button) {
+		var text = eventsText();
+		var label = button.textContent;
+		function flash(message) {
+			button.textContent = message;
+			setTimeout(function () { button.textContent = label; }, 1500);
+		}
+		if (mode === "copy") {
+			try {
+				navigator.clipboard.writeText(text).then(function () { flash("Copied"); }, function () { exportEvents("save", button); });
+			} catch (e) { exportEvents("save", button); }
+			return;
+		}
+		try {
+			var link = document.createElement("a");
+			link.href = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
+			link.download = "eaglercraft-events-" + new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15) + ".txt";
+			document.body.appendChild(link);
+			link.click();
+			link.remove();
+			setTimeout(function () { URL.revokeObjectURL(link.href); }, 5000);
+			flash("Saved");
+		} catch (e) {}
+	}
+
 	function buildNetworkPage() {
 		cur = pages.net;
 		section("Traffic");
@@ -611,6 +643,12 @@
 		var clearLine = el("div", "display:flex;gap:8px;margin-top:8px");
 		var clearButton = clickable(el("div", BUTTON_CSS, "Clear event log"), function () { clearEvents(); update(); });
 		clearButton.title = "Forget the recorded stalls, closed connections and long frames";
+		var copyButton = clickable(el("div", BUTTON_CSS, "Copy"), function () { exportEvents("copy", copyButton); });
+		copyButton.title = "Copy the whole event log as text";
+		var saveButton = clickable(el("div", BUTTON_CSS, "Download"), function () { exportEvents("save", saveButton); });
+		saveButton.title = "Download the whole event log as a text file";
+		clearLine.appendChild(copyButton);
+		clearLine.appendChild(saveButton);
 		clearLine.appendChild(clearButton);
 		cur.appendChild(clearLine);
 		note("NO DATA appears next to the round button when nothing has arrived for 5 seconds.");
@@ -632,6 +670,9 @@
 			function () { return features.jade; }, function (value) { set("jade", value); });
 		toggle("Coordinates", "Position, block, facing and biome. Stays on with chat or the menu open; hidden while F3 is open.",
 			function () { return features.coords; }, function (value) { set("coords", value); });
+		toggle("Keep running in background", "Keeps the game going while this tab is hidden or the window is covered,"
+			+ " so the server does not time you out. Uses a little more battery.",
+			function () { return features.background; }, function (value) { set("background", value); });
 
 		cur.appendChild(el("div", "font-size:12px;margin:8px 0 5px", "Coordinates corner"));
 		var grid = el("div", "display:grid;grid-template-columns:1fr 1fr;gap:6px");
