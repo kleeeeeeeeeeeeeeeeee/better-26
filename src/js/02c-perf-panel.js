@@ -423,7 +423,8 @@
 		return two(d.getHours()) + ":" + two(d.getMinutes()) + ":" + two(d.getSeconds());
 	}
 	function describe(entry) {
-		if (entry.k === "stall") return "no data " + entry.v + " s" + (entry.open ? " (still)" : "");
+		if (entry.k === "stall") return "no data " + entry.v + " s" + (entry.open ? " (still)" : "") + (entry.x ? " (" + entry.x + ")" : "");
+		if (entry.k === "probe") return entry.x + " unreachable " + entry.v + " s" + (entry.open ? " (still)" : "");
 		if (entry.k === "gamestall") return "game froze " + entry.v + " ms" + (entry.open ? " (still)" : "") + (entry.x ? " (" + entry.x + ")" : "");
 		if (entry.k === "hidden") return "tab hidden " + entry.v + " s";
 		if (entry.k === "paused") return "page paused " + entry.v + " s (sleep or freeze)";
@@ -447,7 +448,7 @@
 				var line = el("div", "display:flex;gap:10px");
 				line.appendChild(el("span", "opacity:0.6;flex:none", clock(entry.t)));
 				var text = el("span", "", describe(entry));
-				if (entry.k === "stall" || entry.k === "close" || (entry.k === "gamestall" && entry.v >= 1000)) text.style.color = BAD;
+				if (entry.k === "stall" || entry.k === "probe" || entry.k === "close" || (entry.k === "gamestall" && entry.v >= 1000)) text.style.color = BAD;
 				else if (entry.k === "hidden" || entry.k === "paused") text.style.color = WARN;
 				else text.style.color = entry.v >= 500 ? BAD : WARN;
 				line.appendChild(text);
@@ -638,8 +639,9 @@
 		row("down", "Download");
 		row("up", "Upload");
 		row("conn", "Connection");
+		row("probe", "Reachability");
 		section("Connection events");
-		eventList(["stall", "close", "hidden", "paused", "gamestall"], 8, "None yet. Stalls, closed connections, hidden tabs and pauses are listed here.");
+		eventList(["stall", "probe", "close", "hidden", "paused", "gamestall"], 8, "None yet. Stalls, closed connections, hidden tabs and pauses are listed here.");
 		var clearLine = el("div", "display:flex;gap:8px;margin-top:8px");
 		var clearButton = clickable(el("div", BUTTON_CSS, "Clear event log"), function () { clearEvents(); update(); });
 		clearButton.title = "Forget the recorded stalls, closed connections and long frames";
@@ -995,13 +997,85 @@
 		}
 	}
 
+	// ------------------------------------------------------------ path probes
+	// While a game connection is open, a tiny request goes out every 5 s to the public internet
+	// and to the host of the built-in relay (the Funnel address). They only say whether those can
+	// be reached at all; they let a silent connection be told apart: if the internet probe fails
+	// too the local network is down, if only the relay host fails the problem is on the way to it.
+	var PROBE_MS = 5000, PROBE_TIMEOUT = 4000;
+	var relayHost = "";
+	try {
+		var homeRelay = window.__eaglerHomeServer && window.__eaglerHomeServer.relay;
+		var match = /^wss?:\/\/([^\/:?#]+)/i.exec(homeRelay || "");
+		if (match) relayHost = match[1];
+	} catch (e) {}
+	var probes = {
+		internet: { label: "internet", urls: ["https://www.gstatic.com/generate_204", "https://1.1.1.1/cdn-cgi/trace"], ok: null, ms: 0, failed: 0, event: null },
+		relay: { label: "home relay host", urls: relayHost ? ["https://" + relayHost + "/"] : [], ok: null, ms: 0, failed: 0, event: null }
+	};
+	function probeOnce(url) {
+		return new Promise(function (resolve) {
+			var started = performance.now();
+			var done = false;
+			var timer = setTimeout(function () { if (!done) { done = true; try { controller.abort(); } catch (e) {} resolve(-1); } }, PROBE_TIMEOUT);
+			var controller = typeof AbortController === "function" ? new AbortController() : { abort: function () {} };
+			try {
+				fetch(url + (url.indexOf("?") < 0 ? "?" : "&") + "p=" + Date.now(), { mode: "no-cors", cache: "no-store", signal: controller.signal })
+					.then(function () { if (!done) { done = true; clearTimeout(timer); resolve(Math.round(performance.now() - started)); } },
+						function () { if (!done) { done = true; clearTimeout(timer); resolve(-1); } });
+			} catch (e) { done = true; clearTimeout(timer); resolve(-1); }
+		});
+	}
+	function runProbe(probe) {
+		if (!probe.urls.length) return;
+		Promise.all(probe.urls.map(probeOnce)).then(function (results) {
+			var good = results.filter(function (ms) { return ms >= 0; });
+			if (good.length) {
+				probe.ok = true;
+				probe.ms = Math.min.apply(null, good);
+				probe.failed = 0;
+				if (probe.event) {
+					delete probe.event.open;
+					probe.event = null;
+					++eventsVersion;
+					saveEvents(true);
+				}
+			} else {
+				probe.ok = false;
+				++probe.failed;
+				var seconds = Math.round(probe.failed * PROBE_MS / 1000);
+				// Two failed rounds in a row (a lone failure can be a blip) open an event.
+				if (probe.failed >= 2) {
+					if (!probe.event) probe.event = addEvent({ k: "probe", t: Date.now() - seconds * 1000, v: seconds, open: true, x: probe.label });
+					else { probe.event.v = seconds; ++eventsVersion; saveEvents(false); }
+				}
+			}
+		});
+	}
+	function probeSummary() {
+		function word(probe) {
+			if (!probe.urls.length) return "";
+			return probe.ok === null ? "?" : probe.ok ? "ok" : "FAIL";
+		}
+		var parts = ["internet " + word(probes.internet)];
+		if (probes.relay.urls.length) parts.push("relay host " + word(probes.relay));
+		return parts.join(", ");
+	}
+	try {
+		setInterval(function () {
+			if (document.hidden || net.open <= 0) return;
+			runProbe(probes.internet);
+			runProbe(probes.relay);
+		}, PROBE_MS);
+	} catch (e) {}
+
 	// Opens a "stall" event when nothing has arrived for 5 s, keeps its length up to date
 	// and closes it when data flows again or the connection is gone.
 	var openStall = null;
 	function trackStall(silent) {
 		if (silent >= 5) {
-			if (!openStall) openStall = addEvent({ k: "stall", t: Date.now() - Math.round(silent * 1000), v: Math.round(silent), open: true });
-			else { openStall.v = Math.round(silent); ++eventsVersion; saveEvents(false); }
+			if (!openStall) openStall = addEvent({ k: "stall", t: Date.now() - Math.round(silent * 1000), v: Math.round(silent), open: true, x: probeSummary() });
+			else { openStall.v = Math.round(silent); openStall.x = probeSummary(); ++eventsVersion; saveEvents(false); }
 		} else if (openStall) {
 			delete openStall.open;
 			openStall = null;
@@ -1095,6 +1169,11 @@
 			: "none";
 		rows.conn.title = net.open > 0 ? net.host + ", connected in " + net.connectMs + " ms" : "";
 		rows.conn.style.color = silent >= 5 ? BAD : "";
+		if (rows.probe) {
+			rows.probe.textContent = net.open > 0 ? probeSummary() : "-";
+			rows.probe.style.color = probes.internet.ok === false || probes.relay.ok === false ? BAD : "";
+			rows.probe.title = "Small requests every 5 s to the internet and to the home relay host, to tell where a silent connection breaks";
+		}
 
 		rows.time.textContent = duration(Date.now() - startedAt);
 	}

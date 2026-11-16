@@ -207,6 +207,12 @@ WebSocket close frame (code 1006)`，指向学校网络或 Funnel 掐连接；�
 **只在假装 `document.hidden` 的无头页里测过逻辑（隐藏时回调继续，关掉后停），没在真实被藏起来的标签里验证，
 也不知道游戏的主循环是否一定走 `window.requestAnimationFrame`。**Network 页新增 Copy / Download 按钮，导出完整事件记录。
 
+**路径探测（2026-11-16）**：学校里 11:08:42 起连接变黑洞（relay 60 秒没收到任何数据，服务器 11:09:12 超时，relay 的关闭通知无人回应，
+关闭码 1006）。标签一直在前台，所以不是后台暂停。分不清是学校网络还是 Funnel/家里这头，所以面板在连接开着时每 5 秒向公网
+（gstatic、1.1.1.1）和 relay 主机（取自 `__eaglerHomeServer.relay`）各发一个 `no-cors` 请求；连续两次失败记 `probe` 事件，
+`stall` 事件带上当时的探测结果，Network 页有 Reachability 一行。公网探测也失败=本地网络；只有 relay 主机失败=去 relay 的路上；
+都通但游戏沉默=只是那条 WebSocket。**还没在真实掉线中验证过。**
+
 ## Mac 上 Command+A/C/V/X 不起作用
 
 用户在 Mac 上全选、复制、粘贴都没反应，Windows 上正常。用无头 Chromium 伪装成 Mac 对比
