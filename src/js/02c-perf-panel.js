@@ -142,6 +142,11 @@
 							var created = performance.now(), socket = this;
 							var host = "";
 							try { host = new URL(String(url), location.href).host; } catch (e) {}
+							// After autoDrop has reported a dead connection as closed, the real close event
+							// (if it ever comes) must not reach the game a second time.
+							socket.addEventListener("close", function (ev) {
+								if (socket.__dropped && ev.isTrusted) ev.stopImmediatePropagation();
+							}, true);
 							socket.addEventListener("open", function () {
 								net.lastDown = performance.now(); liveSockets.push({ socket: socket, host: host,
 									connectMs: Math.round(performance.now() - created) });
@@ -424,6 +429,7 @@
 	}
 	function describe(entry) {
 		if (entry.k === "stall") return "no data " + entry.v + " s" + (entry.open ? " (still)" : "") + (entry.x ? " (" + entry.x + ")" : "");
+		if (entry.k === "drop") return "dead connection closed after " + entry.v + " s silent" + (entry.x ? " (" + entry.x + ")" : "");
 		if (entry.k === "probe") return entry.x + " unreachable " + entry.v + " s" + (entry.open ? " (still)" : "");
 		if (entry.k === "gamestall") return "game froze " + entry.v + " ms" + (entry.open ? " (still)" : "") + (entry.x ? " (" + entry.x + ")" : "");
 		if (entry.k === "hidden") return "tab hidden " + entry.v + " s";
@@ -448,7 +454,7 @@
 				var line = el("div", "display:flex;gap:10px");
 				line.appendChild(el("span", "opacity:0.6;flex:none", clock(entry.t)));
 				var text = el("span", "", describe(entry));
-				if (entry.k === "stall" || entry.k === "probe" || entry.k === "close" || (entry.k === "gamestall" && entry.v >= 1000)) text.style.color = BAD;
+				if (entry.k === "stall" || entry.k === "drop" || entry.k === "probe" || entry.k === "close" || (entry.k === "gamestall" && entry.v >= 1000)) text.style.color = BAD;
 				else if (entry.k === "hidden" || entry.k === "paused") text.style.color = WARN;
 				else text.style.color = entry.v >= 500 ? BAD : WARN;
 				line.appendChild(text);
@@ -641,7 +647,7 @@
 		row("conn", "Connection");
 		row("probe", "Reachability");
 		section("Connection events");
-		eventList(["stall", "probe", "close", "hidden", "paused", "gamestall"], 8, "None yet. Stalls, closed connections, hidden tabs and pauses are listed here.");
+		eventList(["stall", "drop", "probe", "close", "hidden", "paused", "gamestall"], 8, "None yet. Stalls, closed connections, hidden tabs and pauses are listed here.");
 		var clearLine = el("div", "display:flex;gap:8px;margin-top:8px");
 		var clearButton = clickable(el("div", BUTTON_CSS, "Clear event log"), function () { clearEvents(); update(); });
 		clearButton.title = "Forget the recorded stalls, closed connections and long frames";
@@ -675,6 +681,9 @@
 		toggle("Keep running in background", "Keeps the game going while this tab is hidden or the window is covered,"
 			+ " so the server does not time you out. Uses a little more battery.",
 			function () { return features.background; }, function (value) { set("background", value); });
+		toggle("Drop dead connections", "If nothing arrives for 15 seconds, close the connection so the game shows"
+			+ " the disconnect screen and you can rejoin, instead of waiting minutes.",
+			function () { return features.autoDrop; }, function (value) { set("autoDrop", value); });
 
 		cur.appendChild(el("div", "font-size:12px;margin:8px 0 5px", "Coordinates corner"));
 		var grid = el("div", "display:grid;grid-template-columns:1fr 1fr;gap:6px");
@@ -1084,10 +1093,36 @@
 		}
 	}
 
+	// A dead connection (see the 11-16 report: data sent, nothing comes back, no error) is only
+	// noticed by the browser after minutes. After 15 s without anything arriving, close it and,
+	// if the browser does not report the close within 1.5 s, tell the game itself it closed
+	// (code 1006), so the game shows its disconnect screen and the player can rejoin at once.
+	var AUTODROP_S = 15, shownAt = 0;
+	try {
+		document.addEventListener("visibilitychange", function () { if (!document.hidden) shownAt = performance.now(); });
+	} catch (e) {}
+	function autoDrop(silent) {
+		var features = window.__eaglerFeatures;
+		if (features && features.autoDrop === false) return;
+		if (silent < AUTODROP_S || document.hidden || performance.now() - shownAt < 10000) return;
+		var victims = liveSockets.filter(function (entry) { return entry.socket.readyState === 1; });
+		victims.forEach(function (entry) {
+			var socket = entry.socket;
+			if (socket.__dropped) return;
+			socket.__dropped = true;
+			addEvent({ k: "drop", t: Date.now(), v: Math.round(silent), x: probeSummary() });
+			try { socket.close(); } catch (e) {}
+			setTimeout(function () {
+				try { socket.dispatchEvent(new CloseEvent("close", { code: 1006, reason: "", wasClean: false })); } catch (e) {}
+			}, 1500);
+		});
+	}
+
 	function update() {
 		if (!root) return;
 		var silent = silentSeconds();
 		trackStall(silent);
+		autoDrop(silent);
 		var left = recording ? Math.max(0, Math.ceil((RECORD_MS - (Date.now() - recording.startedAt)) / 1000)) : 0;
 		var warnings = [];
 		if (silent >= 5) warnings.push("NO DATA " + Math.floor(silent) + "s");

@@ -10,6 +10,7 @@
  *   coords     the coordinates readout
  *   coordsPos  its corner: "tl", "tr", "bl" or "br"
  *   background keep the game running while the tab is hidden (see the end of this file)
+ *   autoDrop   close a game connection that has received nothing for 15 s (used by 02c-perf-panel.js)
  *
  * This script runs in every build, including the ones without the panel, so the
  * defaults (everything on, unless the build's local configuration says otherwise) always apply.
@@ -18,7 +19,7 @@
 	"use strict";
 	var KEY = "eaglercraft26.features";
 	var CORNERS = { tl: 1, tr: 1, bl: 1, br: 1 };
-	var state = { jade: true, coords: true, coordsPos: "tl", background: true };
+	var state = { jade: true, coords: true, coordsPos: "tl", background: true, autoDrop: true };
 	// A build can change the defaults with "features" in its local configuration
 	// (local/home-server.json), e.g. {"features": {"coords": false}} for a build without
 	// the panel, where the player cannot switch things back on. A choice the player has
@@ -40,7 +41,7 @@
 
 	window.__eaglerFeatures = state;
 	window.__eaglerFeatureSet = function (name, value) {
-		if (name === "jade" || name === "coords" || name === "background") state[name] = !!value;
+		if (name === "jade" || name === "coords" || name === "background" || name === "autoDrop") state[name] = !!value;
 		else if (name === "coordsPos" && CORNERS[value] === 1) state.coordsPos = value;
 		else return false;
 		try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}

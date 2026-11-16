@@ -213,6 +213,12 @@ WebSocket close frame (code 1006)`，指向学校网络或 Funnel 掐连接；�
 `stall` 事件带上当时的探测结果，Network 页有 Reachability 一行。公网探测也失败=本地网络；只有 relay 主机失败=去 relay 的路上；
 都通但游戏沉默=只是那条 WebSocket。**还没在真实掉线中验证过。**
 
+**自动断开死连接（`autoDrop`，2026-11-16）**：黑洞时浏览器要几分钟才发现连接死了（用户那次 300 秒以上）。面板在游戏的 WebSocket
+连续 15 秒没收到任何数据（页面在前台且回到前台超过 10 秒）时调用 `socket.close()`，1.5 秒内浏览器没报告关闭就自己给游戏派发一个
+`close` 事件（code 1006），并用捕获阶段的监听挡掉之后真正的关闭事件。记 `drop` 事件，带当时的探测结果。开关在 `02f` 的 `autoDrop`
+（默认开，Mods 页 “Drop dead connections”，`features` 预设可关）。在假的 WebSocket 上测过（15 秒后游戏收到 1006）；
+**没在真实游戏里测过，不知道游戏收到这个合成的关闭后是否一定显示断开界面。**
+
 ## Mac 上 Command+A/C/V/X 不起作用
 
 用户在 Mac 上全选、复制、粘贴都没反应，Windows 上正常。用无头 Chromium 伪装成 Mac 对比
