@@ -1020,7 +1020,10 @@
 	} catch (e) {}
 	var probes = {
 		internet: { label: "internet", urls: ["https://www.gstatic.com/generate_204", "https://1.1.1.1/cdn-cgi/trace"], ok: null, ms: 0, failed: 0, event: null },
-		relay: { label: "home relay host", urls: relayHost ? ["https://" + relayHost + "/"] : [], ok: null, ms: 0, failed: 0, event: null }
+		relay: { label: "home relay host", urls: relayHost ? ["https://" + relayHost + "/"] : [], ok: null, ms: 0, failed: 0, event: null },
+		// Tailscale's own site. If it fails together with the relay host, the way from here to
+		// Tailscale is down; if only the relay host fails, the break is between Tailscale and home.
+		tailscale: { label: "tailscale.com", urls: relayHost ? ["https://login.tailscale.com/"] : [], ok: null, ms: 0, failed: 0, event: null }
 	};
 	function probeOnce(url) {
 		return new Promise(function (resolve) {
@@ -1068,6 +1071,7 @@
 		}
 		var parts = ["internet " + word(probes.internet)];
 		if (probes.relay.urls.length) parts.push("relay host " + word(probes.relay));
+		if (probes.tailscale.urls.length) parts.push("tailscale.com " + word(probes.tailscale));
 		return parts.join(", ");
 	}
 	try {
@@ -1075,6 +1079,7 @@
 			if (document.hidden || net.open <= 0) return;
 			runProbe(probes.internet);
 			runProbe(probes.relay);
+			runProbe(probes.tailscale);
 		}, PROBE_MS);
 	} catch (e) {}
 
@@ -1206,8 +1211,8 @@
 		rows.conn.style.color = silent >= 5 ? BAD : "";
 		if (rows.probe) {
 			rows.probe.textContent = net.open > 0 ? probeSummary() : "-";
-			rows.probe.style.color = probes.internet.ok === false || probes.relay.ok === false ? BAD : "";
-			rows.probe.title = "Small requests every 5 s to the internet and to the home relay host, to tell where a silent connection breaks";
+			rows.probe.style.color = probes.internet.ok === false || probes.relay.ok === false || probes.tailscale.ok === false ? BAD : "";
+			rows.probe.title = "Small requests every 5 s to the internet, Tailscale and the home relay host, to tell where a silent connection breaks";
 		}
 
 		rows.time.textContent = duration(Date.now() - startedAt);
