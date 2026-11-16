@@ -38,6 +38,45 @@
 	function load(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
 	function save(key, value) { try { localStorage.setItem(key, value); } catch (e) {} }
 
+	// ------------------------------------------------------------ event log
+	// Things worth knowing about afterwards, kept in the browser so they survive a
+	// reload: "stall" (nothing arrived on the connection for 5 s or more, with how long
+	// it lasted), "close" (a game connection closed, with its close code) and "hitch" (a
+	// frame that took over 150 ms, with the screen it happened on and whether it came
+	// right after a click or key press). The newest 60 are kept.
+	var EVENTS_KEY = "eaglercraft26.perfPanel.events";
+	var events = [];
+	var eventsVersion = 0;
+	try {
+		var storedEvents = JSON.parse(load(EVENTS_KEY) || "[]");
+		if (Array.isArray(storedEvents)) events = storedEvents.slice(-60);
+	} catch (e) {}
+	var lastEventSave = 0;
+	function saveEvents(force) {
+		var now = Date.now();
+		if (!force && now - lastEventSave < 4000) return;
+		lastEventSave = now;
+		save(EVENTS_KEY, JSON.stringify(events));
+	}
+	function addEvent(entry) {
+		events.push(entry);
+		if (events.length > 60) events.shift();
+		++eventsVersion;
+		saveEvents(true);
+		return entry;
+	}
+	function clearEvents() {
+		events = [];
+		++eventsVersion;
+		saveEvents(true);
+	}
+	var lastInputAt = 0;
+	try {
+		["pointerdown", "keydown"].forEach(function (type) {
+			document.addEventListener(type, function () { lastInputAt = performance.now(); }, true);
+		});
+	} catch (e) {}
+
 	// ------------------------------------------------------------ network meter
 	// Count bytes on the game's own connections. The wrappers extend the native
 	// classes, so instanceof checks, constants and prototypes keep working.
@@ -77,6 +116,12 @@
 									connectMs: Math.round(performance.now() - created) });
 							});
 							socket.addEventListener("message", function (ev) { net.down += sizeOf(ev.data); net.lastDown = performance.now(); });
+							socket.addEventListener("close", function (ev) {
+								var wasLive = liveSockets.some(function (entry) { return entry.socket === socket; });
+								if (!wasLive) return;
+								var quiet = net.lastDown ? Math.round((performance.now() - net.lastDown) / 1000) : 0;
+								addEvent({ k: "close", t: Date.now(), v: quiet, x: "code " + ev.code + (ev.wasClean ? "" : ", not clean") });
+							});
 						} catch (e) {}
 					}
 					send(data) {
@@ -253,7 +298,9 @@
 			"",
 			"== samples (one per half second, tab separated) ==",
 			COLUMNS.join("\t")
-		].concat(done.samples, ["", "== game log lines during the recording (" + done.lines.length + ") =="], done.lines)
+		].concat(done.samples, ["", "== game log lines during the recording (" + done.lines.length + ") =="], done.lines,
+			["", "== event log (newest last; time, kind, length ms or s, detail) =="],
+			events.map(function (entry) { return new Date(entry.t).toISOString() + "\t" + entry.k + "\t" + entry.v + "\t" + (entry.x || ""); }))
 			.join("\n") + "\n";
 		try {
 			var stamp = new Date(done.startedAt).toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
@@ -331,6 +378,42 @@
 	}
 	function note(text) {
 		cur.appendChild(el("div", "font-size:10px;line-height:1.4;opacity:0.55;margin:2px 0 4px", text));
+	}
+
+	// A short list of the newest events of some kinds, redrawn when the log changes.
+	var eventLists = [];
+	function clock(ms) {
+		var d = new Date(ms), two = function (n) { return (n < 10 ? "0" : "") + n; };
+		return two(d.getHours()) + ":" + two(d.getMinutes()) + ":" + two(d.getSeconds());
+	}
+	function describe(entry) {
+		if (entry.k === "stall") return "no data " + entry.v + " s" + (entry.open ? " (still)" : "");
+		if (entry.k === "close") return "connection closed, " + entry.x + (entry.v >= 5 ? ", silent " + entry.v + " s before" : "");
+		return "long frame " + entry.v + " ms" + (entry.x ? " (" + entry.x + ")" : "");
+	}
+	function eventList(kinds, max, emptyText) {
+		var box = el("div", "font-size:11px;line-height:1.5");
+		var shownVersion = -1;
+		cur.appendChild(box);
+		eventLists.push(function () {
+			if (shownVersion === eventsVersion) return;
+			shownVersion = eventsVersion;
+			while (box.firstChild) box.removeChild(box.firstChild);
+			var picked = events.filter(function (entry) { return kinds.indexOf(entry.k) >= 0; }).slice(-max).reverse();
+			if (!picked.length) {
+				box.appendChild(el("div", "opacity:0.55", emptyText));
+				return;
+			}
+			picked.forEach(function (entry) {
+				var line = el("div", "display:flex;gap:10px");
+				line.appendChild(el("span", "opacity:0.6;flex:none", clock(entry.t)));
+				var text = el("span", "", describe(entry));
+				if (entry.k === "stall" || entry.k === "close") text.style.color = BAD;
+				else text.style.color = entry.v >= 500 ? BAD : WARN;
+				line.appendChild(text);
+				box.appendChild(line);
+			});
+		});
 	}
 
 	// A labelled on/off switch. get() reads the current value, set(value) stores it.
@@ -411,6 +494,9 @@
 		row("meshInline", "Built inline");
 		row("meshErrors", "Errors");
 
+		section("Long frames");
+		eventList(["hitch"], 5, "None yet. Frames over 150 ms are listed here.");
+
 		section("System");
 		row("battery", "Battery");
 		rows.batteryLine.style.display = "none";
@@ -479,6 +565,13 @@
 		row("down", "Download");
 		row("up", "Upload");
 		row("conn", "Connection");
+		section("Connection events");
+		eventList(["stall", "close"], 6, "None yet. Stalls of 5 s or more and closed connections are listed here.");
+		var clearLine = el("div", "display:flex;gap:8px;margin-top:8px");
+		var clearButton = clickable(el("div", BUTTON_CSS, "Clear event log"), function () { clearEvents(); update(); });
+		clearButton.title = "Forget the recorded stalls, closed connections and long frames";
+		clearLine.appendChild(clearButton);
+		cur.appendChild(clearLine);
 		note("NO DATA appears next to the round button when nothing has arrived for 5 seconds.");
 	}
 
@@ -674,6 +767,16 @@
 		if (lastFrame) {
 			var delta = now - lastFrame;
 			if (delta > worst) worst = delta;
+			// A long frame while the page is in view: note it with what the game was showing.
+			if (delta > 150 && delta < 10000 && !document.hidden) {
+				var g = window.__eaglerGame;
+				var where = g && performance.now() - g.t < 2000
+					? (g.inWorld ? (g.screen === 0 ? "in world" : g.screen === 1 ? "chat" : g.screen === 2 ? "pause menu" : "menu") : "menu")
+					: "";
+				var afterInput = now - lastInputAt < 1000;
+				addEvent({ k: "hitch", t: Date.now(), v: Math.round(delta),
+					x: where + (afterInput ? (where ? ", " : "") + "after a click or key" : "") });
+			}
 		}
 		lastFrame = now;
 		++frames;
@@ -764,9 +867,25 @@
 		return net.open > 0 && net.lastDown ? (performance.now() - net.lastDown) / 1000 : 0;
 	}
 
+	// Opens a "stall" event when nothing has arrived for 5 s, keeps its length up to date
+	// and closes it when data flows again or the connection is gone.
+	var openStall = null;
+	function trackStall(silent) {
+		if (silent >= 5) {
+			if (!openStall) openStall = addEvent({ k: "stall", t: Date.now() - Math.round(silent * 1000), v: Math.round(silent), open: true });
+			else { openStall.v = Math.round(silent); ++eventsVersion; saveEvents(false); }
+		} else if (openStall) {
+			delete openStall.open;
+			openStall = null;
+			++eventsVersion;
+			saveEvents(true);
+		}
+	}
+
 	function update() {
 		if (!root) return;
 		var silent = silentSeconds();
+		trackStall(silent);
 		var left = recording ? Math.max(0, Math.ceil((RECORD_MS - (Date.now() - recording.startedAt)) / 1000)) : 0;
 		var warnings = [];
 		if (silent >= 5) warnings.push("NO DATA " + Math.floor(silent) + "s");
@@ -782,6 +901,7 @@
 		}
 		if (!open) return;
 
+		eventLists.forEach(function (redraw) { redraw(); });
 		drawGraph();
 		rows.frame.textContent = worstShown ? worstShown.toFixed(1) + " ms" : "--";
 		// The game's own count (the number it shows on screen), handed over by the game itself.

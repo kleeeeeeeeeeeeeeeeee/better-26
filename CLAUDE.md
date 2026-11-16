@@ -157,6 +157,13 @@ Display（清晰度滑块和 Auto）、Network（流量和连接）、Features�
   录制首尾的 `__meshWorkerPool` 完整快照，以及这段时间里游戏写进 `window.__log` 的日志。
   用户打不开 F12，排查问题时让用户录一段发过来
 
+**事件记录（2026-11-16）**：为了查“朋友们同一秒一起 Timed out”和“Mac 主界面按一个按钮就卡一会”，面板把三类事件记在
+localStorage `eaglercraft26.perfPanel.events`（最新 60 条，关页面不丢）：`stall`（连接超过 5 秒没收到数据，带持续秒数；
+正在持续的标“still”）、`close`（游戏的 WebSocket 关闭，带关闭码和关闭前沉默了几秒）、`hitch`（一帧超过 150 毫秒，带当时
+的界面——world/chat/pause menu/menu——以及是不是在点击或按键后 1 秒内）。Network 页的 Connection events 列最近 6 条，
+Stats 页的 Long frames 列最近 5 条，Network 页有 Clear event log 按钮；Record log 下载的文本末尾也附上完整事件记录。
+只改页面，不需要重编游戏。服务端那边的掉线分析（学校网络 / Funnel / relay 三个嫌疑）见对话，未定论。
+
 实现要点：
 
 - 滑块的值是玩家选的清晰度上限，存在 localStorage 的 `eaglercraft26.renderScale`。
