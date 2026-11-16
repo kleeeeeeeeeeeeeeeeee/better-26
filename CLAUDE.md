@@ -253,6 +253,41 @@ WebSocket close frame (code 1006)`，指向学校网络或 Funnel 掐连接；�
   `screen:3`）、坐标元素已建好、无页面错误；**进入世界后的坐标没在浏览器里看过**。用更早的游戏时坐标不显示、FPS 一行隐藏。预览页
   （`tools/panel_preview.py`）用一份假数据演示坐标显示。
 
+## 游戏卡死的根因与防再犯规则：浏览器版里“线程池”是假的
+
+**症状**（2026-11-16，用户在学校 Mac 上）：点主菜单的 Multiplayer 或 Refresh，游戏冻 0.5 到 4 秒，每次打开或刷新都冻，旧版不冻。
+
+**证据链**（都来自用户的 Record log 和事件记录）：
+- 面板的 `gamestall` 事件（游戏自己停止出帧，页面的 `requestAnimationFrame` 仍在 60 帧转）：每次 2.3–2.7 秒，标注“menu, after a click”。
+  普通的 `hitch`（整页卡住）看不到它，因为页面本身没卡，只是游戏循环被堵住了。
+- 每次冻结结束的那一刻，游戏日志里正好有一条 `[Render thread/ERROR] Can't ping wss://...`。**日志里的线程名是 `Render thread`，说明探测
+  在渲染线程上跑**。
+- 失败探测的 2.5 秒正好等于源码里写死的 `Math.max(2500, 10000 / candidates)`（`ServerStatusPinger.pingServerBlocking`）。
+- 删掉列表里一条失效条目后，失败报错没了，但成功的探测仍会冻 0.45–0.9 秒（握手时间），偶尔 3.6 秒（网络抖）。
+
+**机制**：`ServerSelectionList` 把探测提交给 `THREAD_POOL`（`ScheduledThreadPoolExecutor`）。浏览器版里它被替换成
+`teavm-compat/.../TThreadPoolExecutor`、`TScheduledThreadPoolExecutor`（`TExecutors.InlineScheduledExecutorService`），**注释就写着
+“runs every command inline on the calling thread”：任务原地在调用者线程上同步执行，根本不是后台线程**。探测里的
+`WebSocketPacketBridge.connect(...)` → `connectBlocking(timeout)` 要一直等到连上或超时，于是渲染线程被堵到那时。网络越慢、
+地方越远（学校到家里）、失败越多（失效条目每次必等 2.5 秒），冻得越久；在家里网络快，握手 0.1 秒，没人察觉。
+旧版（0.6-dev，构建 `21b0a73c`）没有这个毛病，原因不清楚：旧版源码拿不到（工作区只有一个提交），旧版列表有信号格和在线人数。
+
+**为什么加入服务器不冻**：`ConnectScreen` 自己开了独立线程（日志里叫 `Server Connector #N`），阻塞连接在那个线程里等。只有探测走了假线程池。
+
+**修复**：`ServerSelectionList.runPing`：浏览器里用 `new Thread(task, "Server Pinger").start()`（绿色线程，项目里已有先例，
+`ServerWorkerHost` 的注释称它是 “proven green-thread”，另见 `BrowserResourceReloadExecutor`），桌面仍走线程池。**只通过了编译，还没重编，
+没在浏览器里验证。**验证办法：新版里列表放一个连不上的服务器条目，点 Multiplayer，看面板 Long frames 里不再出现 `game froze`。
+
+**以后写或移植 Java 代码时的规则**：
+1. **不要在渲染线程上做任何会等的事**：`connectBlocking`、`Future.get()`、`Thread.sleep`、`Object.wait`、同步等待网络或磁盘。
+2. **`ExecutorService`、`ScheduledExecutorService`、`ThreadPoolExecutor` 在浏览器版里都是原地执行，不是后台。**要后台就用
+   `new Thread(runnable, "名字").start()`（绿色线程，等待时让出主线程）。
+3. 写新代码前先问：这一步会不会等？会的话它跑在哪个线程？**看日志里的线程名**：任务在等的时候还标着 `Render thread`，就是在渲染线程上。
+4. 排查“点某个按钮就卡”：先在面板事件记录里分清是 `hitch`（整页卡）还是 `gamestall`（游戏自己停了，页面还在转），再对照游戏日志里那一刻的
+   报错和线程名。
+5. 已知的其他可疑点：`RemoteFriendListUpdateHandler` 用了 `Executors.newSingleThreadScheduledExecutor`（浏览器里也是原地执行），
+   里面如果有等待也会同样冻住；还没查。
+
 ## 新游戏本体和旧版（0.6-dev）的两处差别，以及我们的修复（2026-11-17，源码已改、已通过编译，**还没重编**）
 
 用户在 Drive 里传了早期版本 `eaglercraft-26.2 (4).html`（我们自己的早期构建：原版游戏本体加第一版 M1 配置和面板，游戏本体和原版逐字节
