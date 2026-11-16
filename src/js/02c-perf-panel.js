@@ -51,6 +51,13 @@
 		var storedEvents = JSON.parse(load(EVENTS_KEY) || "[]");
 		if (Array.isArray(storedEvents)) events = storedEvents.slice(-60);
 	} catch (e) {}
+	// A failed server ping logs its whole address, token included. Nothing the panel
+	// records or downloads should carry one.
+	function redact(text) {
+		return String(text)
+			.replace(/(token=)[^&\s"']+/gi, "$1<hidden>")
+			.replace(/eyJ[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}/g, "<hidden>");
+	}
 	var lastEventSave = 0;
 	function saveEvents(force) {
 		var now = Date.now();
@@ -69,6 +76,12 @@
 		events = [];
 		++eventsVersion;
 		saveEvents(true);
+	}
+	// Where the game is, from the snapshot it hands over every frame.
+	function whereNow() {
+		var g = window.__eaglerGame;
+		if (!g || performance.now() - g.t > 2000) return "";
+		return g.inWorld ? (g.screen === 0 ? "in world" : g.screen === 1 ? "chat" : g.screen === 2 ? "pause menu" : "menu") : "menu";
 	}
 	var lastInputAt = 0;
 	try {
@@ -256,7 +269,7 @@
 			log.push = function () {
 				try {
 					for (var i = 0; i < arguments.length && recording && recording.lines.length < 5000; ++i) {
-						var line = "" + arguments[i];
+						var line = redact(arguments[i]);
 						recording.lines.push(((Date.now() - recording.startedAt) / 1000).toFixed(1) + "  "
 							+ (line.length > 600 ? line.slice(0, 600) + "...[cut]" : line));
 					}
@@ -300,7 +313,7 @@
 			COLUMNS.join("\t")
 		].concat(done.samples, ["", "== game log lines during the recording (" + done.lines.length + ") =="], done.lines,
 			["", "== event log (newest last; time, kind, length ms or s, detail) =="],
-			events.map(function (entry) { return new Date(entry.t).toISOString() + "\t" + entry.k + "\t" + entry.v + "\t" + (entry.x || ""); }))
+			events.map(function (entry) { return new Date(entry.t).toISOString() + "\t" + entry.k + "\t" + entry.v + "\t" + redact(entry.x || ""); }))
 			.join("\n") + "\n";
 		try {
 			var stamp = new Date(done.startedAt).toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
@@ -388,6 +401,7 @@
 	}
 	function describe(entry) {
 		if (entry.k === "stall") return "no data " + entry.v + " s" + (entry.open ? " (still)" : "");
+		if (entry.k === "gamestall") return "game froze " + entry.v + " ms" + (entry.open ? " (still)" : "") + (entry.x ? " (" + entry.x + ")" : "");
 		if (entry.k === "close") return "connection closed, " + entry.x + (entry.v >= 5 ? ", silent " + entry.v + " s before" : "");
 		return "long frame " + entry.v + " ms" + (entry.x ? " (" + entry.x + ")" : "");
 	}
@@ -408,7 +422,7 @@
 				var line = el("div", "display:flex;gap:10px");
 				line.appendChild(el("span", "opacity:0.6;flex:none", clock(entry.t)));
 				var text = el("span", "", describe(entry));
-				if (entry.k === "stall" || entry.k === "close") text.style.color = BAD;
+				if (entry.k === "stall" || entry.k === "close" || (entry.k === "gamestall" && entry.v >= 1000)) text.style.color = BAD;
 				else text.style.color = entry.v >= 500 ? BAD : WARN;
 				line.appendChild(text);
 				box.appendChild(line);
@@ -495,7 +509,7 @@
 		row("meshErrors", "Errors");
 
 		section("Long frames");
-		eventList(["hitch"], 5, "None yet. Frames over 150 ms are listed here.");
+		eventList(["hitch", "gamestall"], 6, "None yet. Frames over 150 ms and game freezes over 400 ms are listed here.");
 
 		section("System");
 		row("battery", "Battery");
@@ -764,15 +778,13 @@
 	var fps = 0, worstShown = 0, refresh = 60, fastWindows = 0;
 	var lastUp = 0, lastDown = 0;
 	function tick(now) {
+		trackGameStall(now);
 		if (lastFrame) {
 			var delta = now - lastFrame;
 			if (delta > worst) worst = delta;
 			// A long frame while the page is in view: note it with what the game was showing.
 			if (delta > 150 && delta < 10000 && !document.hidden) {
-				var g = window.__eaglerGame;
-				var where = g && performance.now() - g.t < 2000
-					? (g.inWorld ? (g.screen === 0 ? "in world" : g.screen === 1 ? "chat" : g.screen === 2 ? "pause menu" : "menu") : "menu")
-					: "";
+				var where = whereNow();
 				// Judged from when the long frame began (lastFrame), not from when it ended: a
 				// click that started a 4 second stall is 4 seconds old by the time the frame ends.
 				var afterInput = lastInputAt > lastFrame - 1000;
@@ -867,6 +879,44 @@
 	function silentSeconds() {
 		refreshConnections();
 		return net.open > 0 && net.lastDown ? (performance.now() - net.lastDown) / 1000 : 0;
+	}
+
+	// The game draws its own frames; the page keeps running when the game stops (for example
+	// while it waits on something), so the long-frame check above cannot see that. The game
+	// stamps every frame it finishes in window.__eaglerGame.t, so a stamp that stops changing
+	// while the page is still running means the game itself is stuck.
+	var lastGameStamp = 0, lastGameChange = 0, gameStall = null, gameStallFrom = 0;
+	function trackGameStall(now) {
+		var g = window.__eaglerGame;
+		if (!g || typeof g.t !== "number" || document.hidden) {
+			lastGameChange = now;
+			return;
+		}
+		if (g.t !== lastGameStamp) {
+			lastGameStamp = g.t;
+			if (gameStall) {
+				gameStall.v = Math.round(now - gameStallFrom);
+				delete gameStall.open;
+				gameStall = null;
+				++eventsVersion;
+				saveEvents(true);
+			}
+			lastGameChange = now;
+			return;
+		}
+		var quiet = now - lastGameChange;
+		if (quiet < 400) return;
+		if (!gameStall) {
+			gameStallFrom = lastGameChange;
+			var from = whereNow();
+			var afterClick = lastInputAt > lastGameChange - 1000;
+			gameStall = addEvent({ k: "gamestall", t: Date.now() - Math.round(quiet), v: Math.round(quiet), open: true,
+				x: from + (afterClick ? (from ? ", " : "") + "after a click or key" : "") });
+		} else {
+			gameStall.v = Math.round(quiet);
+			++eventsVersion;
+			saveEvents(false);
+		}
 	}
 
 	// Opens a "stall" event when nothing has arrived for 5 s, keeps its length up to date

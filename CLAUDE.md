@@ -162,7 +162,14 @@ localStorage `eaglercraft26.perfPanel.events`（最新 60 条，关页面不丢�
 正在持续的标“still”）、`close`（游戏的 WebSocket 关闭，带关闭码和关闭前沉默了几秒）、`hitch`（一帧超过 150 毫秒，带当时
 的界面——world/chat/pause menu/menu——以及是不是在点击或按键后 1 秒内）。Network 页的 Connection events 列最近 6 条，
 Stats 页的 Long frames 列最近 5 条，Network 页有 Clear event log 按钮；Record log 下载的文本末尾也附上完整事件记录。
-只改页面，不需要重编游戏。服务端那边的掉线分析（学校网络 / Funnel / relay 三个嫌疑）见对话，未定论。
+另有 `gamestall`：游戏自己停了——`window.__eaglerGame.t`（游戏每画完一帧写一次）超过 400 毫秒没变，而页面本身还在转
+（`hitch` 只能看到整个页面卡住，看不到这种）。带当时的界面和是否在点击后；和 `hitch` 一起列在 Stats 页的 Long frames。
+**面板记下和下载的内容会把 `token=...` 和 `eyJ...` 样式的串换成 `<hidden>`**：失败的服务器 ping 会在游戏日志里把含 token 的完整
+地址打出来（2026-11-16 用户的日志里就有），Record log 的游戏日志部分和事件记录都做了遮盖。
+只改页面，不需要重编游戏。2026-11-16 用户在学校 Mac 上的日志：对家里服务器的 ping 在 13 秒内失败两次，`connection dropped without a
+WebSocket close frame (code 1006)`，指向学校网络或 Funnel 掐连接；那次录制里没有出现卡死（画面一直 60 帧），Multiplayer 点击后卡 4 秒
+的原因还没找到。助手已给 relay 加了关闭记录（`logs\relay-closes.log`：时间、玩家名、IP、关闭码、谁先关、存活时间、关闭前沉默多久，
+保留 30 天，不记 token）。服务端那边的掉线分析（学校网络 / Funnel / relay 三个嫌疑）见对话，未定论。
 
 实现要点：
 
