@@ -253,6 +253,21 @@ WebSocket close frame (code 1006)`，指向学校网络或 Funnel 掐连接；�
   `screen:3`）、坐标元素已建好、无页面错误；**进入世界后的坐标没在浏览器里看过**。用更早的游戏时坐标不显示、FPS 一行隐藏。预览页
   （`tools/panel_preview.py`）用一份假数据演示坐标显示。
 
+## 新游戏本体和旧版（0.6-dev）的两处差别，以及我们的修复（2026-11-17，源码已改、已通过编译，**还没重编**）
+
+用户在 Drive 里传了早期版本 `eaglercraft-26.2 (4).html`（我们自己的早期构建：原版游戏本体加第一版 M1 配置和面板，游戏本体和原版逐字节
+相同，构建号 `21b0a73c`）。对比发现新游戏本体（u2，`32ccde69`）有两处不同，用户更喜欢旧版的：
+
+1. **点 Multiplayer 卡住**：浏览器版里 `ServerSelectionList.THREAD_POOL` 是“原地执行”的假线程池（`TThreadPoolExecutor` 注释：
+   “runs every command inline on the calling thread”），所以服务器探测在渲染线程上同步等；走 relay 的探测要 `connectBlocking`
+   到连上或超时（失败至少等 2.5 秒），期间整个游戏冻住。旧版没有这个问题，旧版列表里服务器有信号格和在线人数。
+   修复：`ServerSelectionList.runPing` 在浏览器里用 `new Thread(...).start()`（项目里已有的绿色线程做法，如
+   `BrowserResourceReloadExecutor`）跑探测，列表仍显示在线人数和延迟，不冻游戏。
+2. **主菜单**：新版把个人资料做成三个图标之一，旧版是一个宽的 “Edit Profile” 文字按钮加语言、辅助功能两个图标。
+   `TitleScreen` 已改回旧版布局（宽按钮在 Multiplayer 下面，图标一排两个）。
+
+补丁在 `jade/game.patch`。不要换回旧游戏本体：旧版没有服务器推送资源包的修复、没有 Jade/状态桥。
+
 ## Paper 插件 JadeLite（让服务器上的提示条也显示箱子等内容）
 
 `server-plugin/jadelite/`，成品 `release/jadelite-1.0.0.jar`，说明见那里的 README。回答 `jadelite:req`，格式与游戏内置

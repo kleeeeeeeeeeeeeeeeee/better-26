@@ -22,6 +22,84 @@ index f27ffa00..73e8fcad 100644
              graphics.nextStratum();
              this.extractHotbarAndDecorations(graphics, deltaTracker);
              this.extractEffects(graphics, deltaTracker);
+diff --git a/game/src/main/java/net/minecraft/client/gui/screens/TitleScreen.java b/game/src/main/java/net/minecraft/client/gui/screens/TitleScreen.java
+index 8fd77521..6921b806 100644
+--- a/game/src/main/java/net/minecraft/client/gui/screens/TitleScreen.java
++++ b/game/src/main/java/net/minecraft/client/gui/screens/TitleScreen.java
+@@ -98,19 +98,20 @@ public class TitleScreen extends Screen {
+          topPos = this.createNormalMenuOptions(topPos, 24, liteMode);
+       }
+ 
+-      int numberOfButtons = demoMode ? 2 : 3;
+-      int currentButton = 0;
+-      topPos += 24;
++      // As in the earlier 0.6-dev build: a wide "Edit Profile" button under Multiplayer, then
++      // the language and accessibility icons in the row below.
+       if (!demoMode) {
+-         SpriteIconButton profile = this.addRenderableWidget(
+-            CommonButtons.profile(
+-               20,
+-               var1x -> this.minecraft.gui.setScreen(new net.lax1dude.eaglercraft.v1_8.profile.EaglerProfileScreen26(this)),
+-               true
+-            )
++         topPos += 24;
++         this.addRenderableWidget(
++            Button.builder(
++               Component.translatableWithFallback("eagler.menu.profile", "Edit Profile"),
++               var1x -> this.minecraft.gui.setScreen(new net.lax1dude.eaglercraft.v1_8.profile.EaglerProfileScreen26(this))
++            ).bounds(this.width / 2 - 100, topPos, 200, 20).build()
+          );
+-         profile.setPosition(this.getHorizontalPosition(++currentButton, numberOfButtons, 20), topPos);
+       }
++      int numberOfButtons = 2;
++      int currentButton = 0;
++      topPos += 24;
+       SpriteIconButton language = this.addRenderableWidget(
+          CommonButtons.language(
+             20, var1x -> this.minecraft.gui.setScreen(new LanguageSelectScreen(this, this.minecraft.options, this.minecraft.getLanguageManager())), true
+diff --git a/game/src/main/java/net/minecraft/client/gui/screens/multiplayer/ServerSelectionList.java b/game/src/main/java/net/minecraft/client/gui/screens/multiplayer/ServerSelectionList.java
+index c3b0e1dc..61a41966 100644
+--- a/game/src/main/java/net/minecraft/client/gui/screens/multiplayer/ServerSelectionList.java
++++ b/game/src/main/java/net/minecraft/client/gui/screens/multiplayer/ServerSelectionList.java
+@@ -56,6 +56,29 @@ public class ServerSelectionList extends ObjectSelectionList<ServerSelectionList
+    private static final Identifier MOVE_DOWN_HIGHLIGHTED_SPRITE = Identifier.withDefaultNamespace("server_list/move_down_highlighted");
+    private static final Identifier MOVE_DOWN_SPRITE = Identifier.withDefaultNamespace("server_list/move_down");
+    private static final Logger LOGGER = LogUtils.getLogger();
++   /**
++    * Runs one server ping. On desktop that is the thread pool below. In the browser that pool
++    * runs every task inline on the calling thread, which here is the render thread, so a ping
++    * that waits for a slow or failing connection (the relay connect waits up to several
++    * seconds) froze the whole game while it waited. A green thread waits without holding up
++    * the render loop; the ping reports back through the same callbacks as before.
++    */
++   private static void runPing(final Runnable task) {
++      if (net.lax1dude.eaglercraft.v1_8.EagRuntime.getPlatformType() == net.lax1dude.eaglercraft.v1_8.internal.EnumPlatformType.DESKTOP) {
++         THREAD_POOL.submit(task);
++         return;
++      }
++      Thread thread = new Thread(() -> {
++         try {
++            task.run();
++         } catch (RuntimeException ex) {
++            LOGGER.error("Server ping failed", ex);
++         }
++      }, "Server Pinger");
++      thread.setDaemon(true);
++      thread.start();
++   }
++
+    private static final ExecutorService THREAD_POOL = new ScheduledThreadPoolExecutor(
+       5,
+       new ThreadFactoryBuilder()
+@@ -292,7 +315,7 @@ public class ServerSelectionList extends ObjectSelectionList<ServerSelectionList
+                if (pingTicket != null) {
+                   this.serverData.setState(ServerData.State.PINGING);
+                   try {
+-                     ServerSelectionList.THREAD_POOL.submit(
++                     ServerSelectionList.runPing(
+                         () -> {
+                            this.screen
+                               .getPinger()
 diff --git a/game/src/main/java/net/minecraft/client/multiplayer/ClientPacketListener.java b/game/src/main/java/net/minecraft/client/multiplayer/ClientPacketListener.java
 index 655eeb82..51ba6385 100644
 --- a/game/src/main/java/net/minecraft/client/multiplayer/ClientPacketListener.java
