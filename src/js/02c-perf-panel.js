@@ -368,6 +368,11 @@
 	var BUTTON_CSS = "flex:1;text-align:center;padding:5px 8px;border-radius:3px;"
 		+ "background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.16);white-space:nowrap";
 	var TAB_KEY = "eaglercraft26.perfPanel.tab";
+	// A build can show only some tabs: "panelTabs": ["net"] in its local configuration (used
+	// for the build given to a friend whose dropouts are being looked into). Without it all
+	// four tabs and the footer buttons show.
+	var ONLY = window.__eaglerHomeServer && Array.isArray(window.__eaglerHomeServer.panelTabs)
+		&& window.__eaglerHomeServer.panelTabs.length ? window.__eaglerHomeServer.panelTabs : null;
 	var TABS = [["stats", "Stats", "clock"], ["display", "Video", "spyglass"], ["net", "Network", "pearl"],
 		["features", "Mods", "book"]];
 
@@ -475,6 +480,7 @@
 	}
 
 	function showTab(name) {
+		if (ONLY && ONLY.indexOf(name) < 0) name = ONLY[0];
 		tab = pages[name] ? name : "stats";
 		TABS.forEach(function (entry) {
 			var active = entry[0] === tab;
@@ -601,7 +607,7 @@
 		row("up", "Upload");
 		row("conn", "Connection");
 		section("Connection events");
-		eventList(["stall", "close", "hidden", "paused"], 8, "None yet. Stalls, closed connections, hidden tabs and pauses are listed here.");
+		eventList(["stall", "close", "hidden", "paused", "gamestall"], 8, "None yet. Stalls, closed connections, hidden tabs and pauses are listed here.");
 		var clearLine = el("div", "display:flex;gap:8px;margin-top:8px");
 		var clearButton = clickable(el("div", BUTTON_CSS, "Clear event log"), function () { clearEvents(); update(); });
 		clearButton.title = "Forget the recorded stalls, closed connections and long frames";
@@ -727,6 +733,7 @@
 			button.appendChild(icon);
 			button.appendChild(el("span", "", entry[1]));
 			tabButtons[entry[0]] = button;
+			if (ONLY && ONLY.indexOf(entry[0]) < 0) button.style.display = "none";
 			tabbar.appendChild(button);
 		});
 		body.appendChild(tabbar);
@@ -753,6 +760,7 @@
 		});
 		recordButton.title = "Record 60 seconds of performance data and download it. Click again to stop early.";
 		buttons.appendChild(recordButton);
+		if (ONLY) buttons.style.display = "none";
 		body.appendChild(buttons);
 
 		root.appendChild(body);
