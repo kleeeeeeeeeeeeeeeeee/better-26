@@ -204,8 +204,11 @@ WebSocket close frame (code 1006)`，指向学校网络或 Funnel 掐连接；�
 `requestAnimationFrame`，游戏停转、答不上 keep-alive，服务器判 `Timed out`。`02f-features.js` 末尾包了一层
 `requestAnimationFrame`：页面被藏起来时由 Worker 的 `setInterval(50ms)` 代为触发等待中的回调（约 20 次/秒），页面可见时
 仍走原生。开关 `background`（默认开，`features` 预设可关），在 Mods 页叫 “Keep running in background”。
-**只在假装 `document.hidden` 的无头页里测过逻辑（隐藏时回调继续，关掉后停），没在真实被藏起来的标签里验证，
-也不知道游戏的主循环是否一定走 `window.requestAnimationFrame`。**Network 页新增 Copy / Download 按钮，导出完整事件记录。
+**只在假装 `document.hidden` 的无头页里测过逻辑（隐藏时回调继续，关掉后停），没在真实被藏起来的标签里验证。**
+**2026-11-17 发现：游戏并不靠 `requestAnimationFrame` 驱动**（客户端 wasm 里这个词只出现一次，是调试文字；TeaVM 运行时里绿色线程
+的让出走 `teavmAsync.offer` → `setTimeout`）。浏览器把隐藏标签页的定时器压到每秒一次甚至更慢，所以上面那层 rAF 包装对游戏没用。
+于是 `02f` 又包了一层 `setTimeout`：隐藏时（且 `background` 开）传函数的 `setTimeout` 改由 Worker 的计时器执行，可见时走原生。
+只用假的 Worker 在 Node 里测过路由逻辑（可见走原生，隐藏走 Worker，取消有效，参数传递，开关关掉后走原生），**没在真实标签页里验证。**Network 页新增 Copy / Download 按钮，导出完整事件记录。
 
 **路径探测（2026-11-16）**：学校里 11:08:42 起连接变黑洞（relay 60 秒没收到任何数据，服务器 11:09:12 超时，relay 的关闭通知无人回应，
 关闭码 1006）。标签一直在前台，所以不是后台暂停。分不清是学校网络还是 Funnel/家里这头，所以面板在连接开着时每 5 秒向公网

@@ -101,4 +101,56 @@
 		sync();
 		window.__eaglerBackground = { active: function () { return !!ticker; } };
 	} catch (e) {}
+
+	// The game does not wait for frames with requestAnimationFrame: its green threads yield through
+	// setTimeout (teavmAsync.offer in the TeaVM runtime). A browser delays timers in a hidden tab to
+	// one a second, and much less after a few minutes, so the game still stalls there. While the page
+	// is hidden, setTimeout calls made with a function are carried out by a worker's timers instead,
+	// which are not slowed down that way. Calls made while the page is visible are untouched.
+	try {
+		var nativeSetTimeout = window.setTimeout.bind(window);
+		var nativeClearTimeout = window.clearTimeout.bind(window);
+		var timerWorker = null;
+		var timerCallbacks = {};
+		var nextTimerId = 1500000000;
+		function startTimerWorker() {
+			if (timerWorker) return timerWorker;
+			try {
+				var source = "var h={};onmessage=function(e){var d=e.data;"
+					+ "if(d.c){clearTimeout(h[d.i]);delete h[d.i];return}"
+					+ "h[d.i]=setTimeout(function(){delete h[d.i];postMessage(d.i)},d.t)}";
+				var url = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
+				timerWorker = new Worker(url);
+				URL.revokeObjectURL(url);
+				timerWorker.onmessage = function (event) {
+					var callback = timerCallbacks[event.data];
+					if (!callback) return;
+					delete timerCallbacks[event.data];
+					callback();
+				};
+			} catch (e) { timerWorker = null; }
+			return timerWorker;
+		}
+		window.setTimeout = function (callback, delay) {
+			if (!state.background || !document.hidden || typeof callback !== "function") {
+				return nativeSetTimeout.apply(window, arguments);
+			}
+			var worker = startTimerWorker();
+			if (!worker) return nativeSetTimeout.apply(window, arguments);
+			var extra = Array.prototype.slice.call(arguments, 2);
+			var id = nextTimerId++;
+			timerCallbacks[id] = function () { callback.apply(window, extra); };
+			worker.postMessage({ i: id, t: Math.max(0, +delay || 0) });
+			return id;
+		};
+		window.clearTimeout = function (id) {
+			if (timerCallbacks[id]) {
+				delete timerCallbacks[id];
+				if (timerWorker) timerWorker.postMessage({ i: id, c: 1 });
+				return;
+			}
+			nativeClearTimeout(id);
+		};
+		window.__eaglerTimerWorker = { active: function () { return !!timerWorker; }, pending: function () { return Object.keys(timerCallbacks).length; } };
+	} catch (e) {}
 })();
