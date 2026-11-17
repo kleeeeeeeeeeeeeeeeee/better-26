@@ -1074,13 +1074,18 @@
 		if (probes.tailscale.urls.length) parts.push("tailscale.com " + word(probes.tailscale));
 		return parts.join(", ");
 	}
+	// They also run while the page is hidden (11-17: two connections died during long hidden stretches and the
+	// stall events carried probe results from before the page was hidden). A chain of setTimeout calls rather than
+	// setInterval, so that 02f-features.js can carry the timers on a worker and they are not slowed down in a hidden tab.
 	try {
-		setInterval(function () {
-			if (document.hidden || net.open <= 0) return;
-			runProbe(probes.internet);
-			runProbe(probes.relay);
-			runProbe(probes.tailscale);
-		}, PROBE_MS);
+		(function probeTick() {
+			if (net.open > 0) {
+				runProbe(probes.internet);
+				runProbe(probes.relay);
+				runProbe(probes.tailscale);
+			}
+			setTimeout(probeTick, PROBE_MS);
+		})();
 	} catch (e) {}
 
 	// Opens a "stall" event when nothing has arrived for 5 s, keeps its length up to date
