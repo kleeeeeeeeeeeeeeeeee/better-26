@@ -211,7 +211,14 @@ WebSocket close frame (code 1006)`，指向学校网络或 Funnel 掐连接；�
 关闭码 1006）。标签一直在前台，所以不是后台暂停。分不清是学校网络还是 Funnel/家里这头，所以面板在连接开着时每 5 秒向公网
 （gstatic、1.1.1.1）和 relay 主机（取自 `__eaglerHomeServer.relay`）各发一个 `no-cors` 请求；连续两次失败记 `probe` 事件，
 `stall` 事件带上当时的探测结果，Network 页有 Reachability 一行。公网探测也失败=本地网络；只有 relay 主机失败=去 relay 的路上；
-都通但游戏沉默=只是那条 WebSocket。**还没在真实掉线中验证过。**
+都通但游戏沉默=只是那条 WebSocket。2026-11-16 起还探测 `login.tailscale.com`：它和 relay 主机一起失败=这里到 Tailscale 的路不通；只有 relay 主机失败=Tailscale 入口到家里的隧道有问题。12:06 那次真实掉线里抓到 `internet ok, relay host FAIL`（公网通、去家里不通），三个学校玩家同时断，家里电脑 Wi-Fi 信号当时从 86% 掉到 63–75%（6GHz）。
+倾向是家里这头或 Funnel，不是学校整体网络；待验证（改有线或 5GHz，读 Tailscale 日志）。详见 `reports/2026-11-16-disconnect-investigation.md`。
+
+**自动断开死连接（`autoDrop`，2026-11-16）**：黑洞时浏览器要几分钟才发现连接死了（用户那次 300 秒以上）。面板在游戏的 WebSocket
+连续 15 秒没收到任何数据（页面在前台且回到前台超过 10 秒）时调用 `socket.close()`，1.5 秒内浏览器没报告关闭就自己给游戏派发一个
+`close` 事件（code 1006），并用捕获阶段的监听挡掉之后真正的关闭事件。记 `drop` 事件，带当时的探测结果。开关在 `02f` 的 `autoDrop`
+（默认开，Mods 页 “Drop dead connections”，`features` 预设可关）。在假的 WebSocket 上测过（15 秒后游戏收到 1006）；
+**没在真实游戏里测过，不知道游戏收到这个合成的关闭后是否一定显示断开界面。**
 
 ## Mac 上 Command+A/C/V/X 不起作用
 
@@ -265,6 +272,9 @@ WebSocket close frame (code 1006)`，指向学校网络或 Funnel 掐连接；�
 - 面板 Stats 页加了 `FPS` 一行，读 `__eaglerGame.fps`，和游戏屏幕上的数字一致。
 - `ClientFeatures` 只剩 `jade()`，坐标开关由页面自己读。
 - 游戏本体已重编并换进仓库（构建 `32ccde69191f1424`）。启动检查确认主菜单时 `__eaglerGame` 有数据（`inWorld:false`、`fps`、
+- **2026-11-16 又重编一次（构建 `41c1c7a547c3baec`）**：含 Multiplayer 探测改走 `new Thread` 的修复、主菜单改回宽的 “Edit Profile” 按钮。
+  只做了启动检查（home 和 friends 都 14 秒内就绪、无页面错误、`autoDrop`/`background` 开关对象存在）。**Multiplayer 不再卡、主菜单按钮的样子
+  都没有在浏览器里确认过**（自动点击脚本的坐标对不上新的用户名对话框，用户又要求别再开无头浏览器）。
   `screen:3`）、坐标元素已建好、无页面错误；**进入世界后的坐标没在浏览器里看过**。用更早的游戏时坐标不显示、FPS 一行隐藏。预览页
   （`tools/panel_preview.py`）用一份假数据演示坐标显示。
 
